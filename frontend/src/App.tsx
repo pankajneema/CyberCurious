@@ -9,15 +9,18 @@ import Signup from "./pages/Signup";
 import Pricing from "./pages/Pricing";
 import About from "./pages/About";
 import Contact from "./pages/Contact";
+import ServicesPage from "./pages/Services";
 import NotFound from "./pages/NotFound";
 import { AppLayout } from "./layouts/AppLayout";
 import Dashboard from "./pages/app/Dashboard";
 import ASM from "./pages/app/ASM";
 import VS from "./pages/app/VS";
-import Services from "./pages/app/Services";
+import Assets from "./pages/app/Assets";
+import AppServices from "./pages/app/Services";
 import Marketplace from "./pages/app/Marketplace";
 import Reports from "./pages/app/Reports";
 import Account from "./pages/app/Account";
+import Team from "./pages/app/Team";
 
 const queryClient = new QueryClient();
 
@@ -35,14 +38,17 @@ const App = () => (
           <Route path="/pricing" element={<Pricing />} />
           <Route path="/about" element={<About />} />
           <Route path="/contact" element={<Contact />} />
+          <Route path="/services" element={<ServicesPage />} />
           
           {/* App routes */}
           <Route path="/app" element={<AppLayout />}>
             <Route index element={<Dashboard />} />
             <Route path="dashboard" element={<Dashboard />} />
+            <Route path="team" element={<Team />} />
             <Route path="asm" element={<ASM />} />
+            <Route path="assets" element={<Assets />} />
             <Route path="vs" element={<VS />} />
-            <Route path="services" element={<Services />} />
+            <Route path="services" element={<AppServices />} />
             <Route path="marketplace" element={<Marketplace />} />
             <Route path="reports" element={<Reports />} />
             <Route path="account" element={<Account />} />

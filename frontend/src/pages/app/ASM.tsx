@@ -1,48 +1,33 @@
 import { useState } from "react";
-import { Radar, RefreshCw, LayoutDashboard, Server, Network, AlertTriangle, Cloud, Users, GitBranch, FileSearch, Settings } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Radar, LayoutDashboard, Network, Cloud, Users, GitBranch, FileSearch, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ASMOverview } from "@/components/asm/ASMOverview";
-import { AssetInventory } from "@/components/asm/AssetInventory";
 import { SubdomainDiscovery } from "@/components/asm/SubdomainDiscovery";
-import { Vulnerabilities } from "@/components/asm/Vulnerabilities";
 import { CloudAttackSurface } from "@/components/asm/CloudAttackSurface";
 import { HumanAttackSurface } from "@/components/asm/HumanAttackSurface";
 import { AttackSurfaceGraph } from "@/components/asm/AttackSurfaceGraph";
 import { ScanManager } from "@/components/asm/ScanManager";
 import { ASMSettings } from "@/components/asm/ASMSettings";
 import { motion } from "framer-motion";
-import { toast } from "@/hooks/use-toast";
 
 const tabs = [
   { value: "overview", label: "Overview", icon: LayoutDashboard },
-  { value: "assets", label: "Assets", icon: Server },
   { value: "subdomains", label: "Subdomains", icon: Network },
-  { value: "vulnerabilities", label: "Vulnerabilities", icon: AlertTriangle },
   { value: "cloud", label: "Cloud", icon: Cloud },
   { value: "human", label: "Human", icon: Users },
   { value: "graph", label: "Graph", icon: GitBranch },
-  { value: "scans", label: "Scans", icon: FileSearch },
+  { value: "scans", label: "Scan Management", icon: FileSearch },
   { value: "settings", label: "Settings", icon: Settings },
 ];
 
 export default function ASM() {
   const [activeTab, setActiveTab] = useState("overview");
-  const [isScanning, setIsScanning] = useState(false);
+  const navigate = useNavigate();
 
-  const handleDiscovery = () => {
-    setIsScanning(true);
-    toast({
-      title: "Discovery Started",
-      description: "Scanning your attack surface...",
-    });
-    setTimeout(() => {
-      setIsScanning(false);
-      toast({
-        title: "Discovery Complete",
-        description: "Found 12 new assets",
-      });
-    }, 3000);
+  const handleGoToScans = () => {
+    setActiveTab("scans");
   };
 
   return (
@@ -60,26 +45,16 @@ export default function ASM() {
             </div>
             Attack Surface Management
           </h1>
-          <p className="text-muted-foreground mt-1">Discover and monitor all your external assets</p>
+          <p className="text-muted-foreground mt-1">Discover and monitor your external attack surface</p>
         </div>
         <Button
           variant="gradient"
           size="lg"
-          onClick={handleDiscovery}
-          disabled={isScanning}
+          onClick={handleGoToScans}
           className="shrink-0"
         >
-          {isScanning ? (
-            <>
-              <RefreshCw className="w-4 h-4 animate-spin" />
-              Scanning...
-            </>
-          ) : (
-            <>
-              <Radar className="w-4 h-4" />
-              Discover Now
-            </>
-          )}
+          <FileSearch className="w-4 h-4" />
+          Scan Management
         </Button>
       </motion.div>
 
@@ -109,16 +84,10 @@ export default function ASM() {
           className="mt-6"
         >
           <TabsContent value="overview" className="mt-0">
-            <ASMOverview />
-          </TabsContent>
-          <TabsContent value="assets" className="mt-0">
-            <AssetInventory />
+            <ASMOverview onNavigateToScans={handleGoToScans} onNavigateToReports={() => navigate('/app/reports')} />
           </TabsContent>
           <TabsContent value="subdomains" className="mt-0">
             <SubdomainDiscovery />
-          </TabsContent>
-          <TabsContent value="vulnerabilities" className="mt-0">
-            <Vulnerabilities />
           </TabsContent>
           <TabsContent value="cloud" className="mt-0">
             <CloudAttackSurface />

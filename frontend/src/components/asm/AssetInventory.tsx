@@ -20,6 +20,12 @@ import {
   Tag,
   RefreshCw,
   X,
+  Users,
+  Shield,
+  Network,
+  Upload,
+  FileText,
+  CheckCircle2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -57,6 +63,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { toast } from "@/hooks/use-toast";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 
 const assets = [
   { id: 1, name: "api.company.com", type: "domain", exposure: "public", risk: 78, tags: ["production", "api"], lastSeen: "2 min ago", status: "active" },
@@ -75,7 +83,17 @@ const typeIcons: Record<string, typeof Globe> = {
   cloud: Cloud,
   repo: Code,
   saas: Box,
+  user: Users,
 };
+
+const assetTypes = [
+  { value: "domain", label: "Domain", icon: Globe, description: "Add domain names (e.g., example.com)" },
+  { value: "ip", label: "IP Address", icon: Server, description: "Add IP addresses or CIDR ranges" },
+  { value: "cloud", label: "Cloud Asset", icon: Cloud, description: "AWS, Azure, GCP resources" },
+  { value: "repo", label: "Repository", icon: Code, description: "GitHub, GitLab, Bitbucket repos" },
+  { value: "saas", label: "SaaS App", icon: Box, description: "Third-party SaaS applications" },
+  { value: "user", label: "User Account", icon: Users, description: "Employee or service accounts" },
+];
 
 export function AssetInventory() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -86,7 +104,15 @@ export function AssetInventory() {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; name: string } | null>(null);
-  const [newAsset, setNewAsset] = useState({ name: "", type: "", exposure: "public" });
+  const [selectedAssetType, setSelectedAssetType] = useState<string | null>(null);
+  const [newAsset, setNewAsset] = useState({
+    name: "",
+    type: "",
+    exposure: "public",
+    tags: "",
+    description: "",
+    bulkInput: "",
+  });
 
   const filteredAssets = assets.filter((asset) => {
     const matchesSearch = asset.name.toLowerCase().includes(searchQuery.toLowerCase());
@@ -117,13 +143,22 @@ export function AssetInventory() {
   };
 
   const handleAddAsset = () => {
-    if (!newAsset.name || !newAsset.type) {
-      toast({ title: "Error", description: "Please fill in all fields", variant: "destructive" });
+    if (!newAsset.name && !newAsset.bulkInput) {
+      toast({ title: "Error", description: "Please enter asset details", variant: "destructive" });
       return;
     }
-    toast({ title: "Asset Added", description: `${newAsset.name} has been added` });
+
+    const assetsToAdd = newAsset.bulkInput 
+      ? newAsset.bulkInput.split("\n").filter(line => line.trim()).length
+      : 1;
+
+    toast({ 
+      title: "Assets Added", 
+      description: `${assetsToAdd} asset${assetsToAdd > 1 ? 's' : ''} added successfully` 
+    });
     setIsAddOpen(false);
-    setNewAsset({ name: "", type: "", exposure: "public" });
+    setSelectedAssetType(null);
+    setNewAsset({ name: "", type: "", exposure: "public", tags: "", description: "", bulkInput: "" });
   };
 
   const handleDeleteConfirm = () => {
@@ -136,6 +171,188 @@ export function AssetInventory() {
   const handleBulkDelete = () => {
     toast({ title: "Assets Deleted", description: `${selectedAssets.length} assets have been removed` });
     setSelectedAssets([]);
+  };
+
+  const renderAssetTypeForm = () => {
+    const type = assetTypes.find(t => t.value === selectedAssetType);
+    if (!type) return null;
+
+    const Icon = type.icon;
+
+    return (
+      <motion.div
+        initial={{ opacity: 0, x: 20 }}
+        animate={{ opacity: 1, x: 0 }}
+        className="space-y-6"
+      >
+        <div className="flex items-center gap-3 p-4 bg-primary/5 rounded-xl border border-primary/20">
+          <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
+            <Icon className="w-6 h-6 text-primary" />
+          </div>
+          <div>
+            <h4 className="font-medium text-foreground">{type.label}</h4>
+            <p className="text-sm text-muted-foreground">{type.description}</p>
+          </div>
+        </div>
+
+        <Tabs defaultValue="single" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="single">Single Entry</TabsTrigger>
+            <TabsTrigger value="bulk">Bulk Import</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="single" className="space-y-4 mt-4">
+            <div className="space-y-2">
+              <Label>
+                {selectedAssetType === "ip" ? "IP Address / CIDR Range" :
+                 selectedAssetType === "domain" ? "Domain Name" :
+                 selectedAssetType === "user" ? "Email / Username" :
+                 "Asset Name"}
+              </Label>
+              <Input
+                placeholder={
+                  selectedAssetType === "ip" ? "e.g., 192.168.1.1 or 10.0.0.0/24" :
+                  selectedAssetType === "domain" ? "e.g., api.company.com" :
+                  selectedAssetType === "user" ? "e.g., john@company.com" :
+                  "Enter asset name"
+                }
+                value={newAsset.name}
+                onChange={(e) => setNewAsset({ ...newAsset, name: e.target.value })}
+              />
+            </div>
+
+            {selectedAssetType === "user" && (
+              <>
+                <div className="space-y-2">
+                  <Label>Department</Label>
+                  <Select>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select department" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="engineering">Engineering</SelectItem>
+                      <SelectItem value="sales">Sales</SelectItem>
+                      <SelectItem value="marketing">Marketing</SelectItem>
+                      <SelectItem value="hr">HR</SelectItem>
+                      <SelectItem value="finance">Finance</SelectItem>
+                      <SelectItem value="it">IT</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Access Level</Label>
+                  <Select>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select access level" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="admin">Admin</SelectItem>
+                      <SelectItem value="standard">Standard User</SelectItem>
+                      <SelectItem value="limited">Limited Access</SelectItem>
+                      <SelectItem value="guest">Guest</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            )}
+
+            {selectedAssetType === "cloud" && (
+              <div className="space-y-2">
+                <Label>Cloud Provider</Label>
+                <Select>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select provider" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="aws">Amazon Web Services</SelectItem>
+                    <SelectItem value="azure">Microsoft Azure</SelectItem>
+                    <SelectItem value="gcp">Google Cloud Platform</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label>Exposure</Label>
+              <Select 
+                value={newAsset.exposure} 
+                onValueChange={(value) => setNewAsset({ ...newAsset, exposure: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="public">Public (Internet-facing)</SelectItem>
+                  <SelectItem value="internal">Internal (Private network)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Tags (comma-separated)</Label>
+              <Input
+                placeholder="e.g., production, critical, api"
+                value={newAsset.tags}
+                onChange={(e) => setNewAsset({ ...newAsset, tags: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Description (optional)</Label>
+              <Textarea
+                placeholder="Add notes about this asset..."
+                value={newAsset.description}
+                onChange={(e) => setNewAsset({ ...newAsset, description: e.target.value })}
+                rows={3}
+              />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="bulk" className="space-y-4 mt-4">
+            <div className="p-4 bg-muted/30 rounded-xl border border-dashed border-border">
+              <div className="flex items-center gap-3 mb-3">
+                <Upload className="w-5 h-5 text-muted-foreground" />
+                <span className="text-sm font-medium text-foreground">Bulk Import</span>
+              </div>
+              <p className="text-sm text-muted-foreground mb-4">
+                Enter one {selectedAssetType === "ip" ? "IP/CIDR" : selectedAssetType === "domain" ? "domain" : "asset"} per line, or upload a CSV file
+              </p>
+              <Textarea
+                placeholder={
+                  selectedAssetType === "ip" 
+                    ? "192.168.1.1\n192.168.1.2\n10.0.0.0/24" 
+                    : selectedAssetType === "domain"
+                    ? "api.company.com\nmail.company.com\nstaging.company.com"
+                    : "Enter assets, one per line..."
+                }
+                value={newAsset.bulkInput}
+                onChange={(e) => setNewAsset({ ...newAsset, bulkInput: e.target.value })}
+                rows={8}
+                className="font-mono text-sm"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" className="gap-2">
+                <FileText className="w-4 h-4" />
+                Upload CSV
+              </Button>
+              <span className="text-xs text-muted-foreground">or paste directly above</span>
+            </div>
+          </TabsContent>
+        </Tabs>
+
+        <div className="flex gap-3 pt-4 border-t border-border">
+          <Button variant="outline" className="flex-1" onClick={() => setSelectedAssetType(null)}>
+            Back
+          </Button>
+          <Button variant="gradient" className="flex-1" onClick={handleAddAsset}>
+            <CheckCircle2 className="w-4 h-4 mr-2" />
+            Add Asset{newAsset.bulkInput ? "s" : ""}
+          </Button>
+        </div>
+      </motion.div>
+    );
   };
 
   return (
@@ -152,7 +369,7 @@ export function AssetInventory() {
         <div className="flex gap-3">
           <Button variant="outline">
             <Download className="w-4 h-4 mr-2" />
-            Export CSV
+            Export
           </Button>
           <Button variant="gradient" onClick={() => setIsAddOpen(true)}>
             <Plus className="w-4 h-4 mr-2" />
@@ -373,14 +590,12 @@ export function AssetInventory() {
                 </SheetTitle>
               </SheetHeader>
               <div className="mt-6 space-y-6">
-                {/* Quick Actions */}
                 <div className="flex flex-wrap gap-2">
                   <Button variant="outline" size="sm"><RefreshCw className="w-4 h-4 mr-1" />Re-scan</Button>
                   <Button variant="outline" size="sm"><UserPlus className="w-4 h-4 mr-1" />Assign</Button>
                   <Button variant="outline" size="sm" onClick={() => setIsEditOpen(true)}><Edit className="w-4 h-4 mr-1" />Edit</Button>
                 </div>
 
-                {/* Asset Info */}
                 <div className="space-y-4">
                   <h4 className="font-medium text-foreground">Asset Information</h4>
                   <div className="grid grid-cols-2 gap-4">
@@ -403,60 +618,14 @@ export function AssetInventory() {
                   </div>
                 </div>
 
-                {/* Open Ports */}
-                <div className="space-y-3">
-                  <h4 className="font-medium text-foreground">Open Ports</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {[22, 80, 443, 3306, 5432].map((port) => (
-                      <span key={port} className="px-3 py-1.5 bg-warning/10 text-warning text-sm rounded-lg font-mono">
-                        {port}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Technologies */}
-                <div className="space-y-3">
-                  <h4 className="font-medium text-foreground">Technologies Detected</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {["nginx", "Node.js", "PostgreSQL", "React"].map((tech) => (
-                      <span key={tech} className="px-3 py-1.5 bg-muted text-muted-foreground text-sm rounded-lg">
-                        {tech}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Vulnerabilities */}
-                <div className="space-y-3">
-                  <h4 className="font-medium text-foreground">Related Vulnerabilities</h4>
-                  <div className="space-y-2">
-                    {[
-                      { title: "Outdated SSL Certificate", severity: "high" },
-                      { title: "Missing Security Headers", severity: "medium" },
-                    ].map((vuln, i) => (
-                      <div key={i} className="flex items-center justify-between p-4 bg-muted/30 rounded-xl">
-                        <span className="text-sm">{vuln.title}</span>
-                        <SeverityBadge severity={vuln.severity as any} showDot={false} />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Tags */}
                 <div className="space-y-3">
                   <h4 className="font-medium text-foreground">Tags</h4>
                   <div className="flex flex-wrap gap-2">
                     {selectedAsset.tags.map((tag) => (
-                      <span key={tag} className="px-3 py-1.5 bg-primary/10 text-primary text-sm rounded-lg flex items-center gap-2">
+                      <span key={tag} className="px-3 py-1.5 bg-primary/10 text-primary text-sm rounded-lg">
                         {tag}
-                        <X className="w-3 h-3 cursor-pointer hover:text-destructive" />
                       </span>
                     ))}
-                    <Button variant="ghost" size="sm" className="h-8">
-                      <Plus className="w-3 h-3 mr-1" />
-                      Add Tag
-                    </Button>
                   </div>
                 </div>
               </div>
@@ -466,72 +635,61 @@ export function AssetInventory() {
       </Sheet>
 
       {/* Add Asset Dialog */}
-      <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-        <DialogContent className="sm:max-w-md">
+      <Dialog open={isAddOpen} onOpenChange={(open) => { setIsAddOpen(open); if (!open) setSelectedAssetType(null); }}>
+        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Plus className="w-5 h-5 text-primary" />
+              <Shield className="w-5 h-5 text-primary" />
               Add New Asset
             </DialogTitle>
             <DialogDescription>
-              Add a new asset to your inventory
+              Select the type of asset you want to add to your inventory
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Asset Name / Address</Label>
-              <Input
-                placeholder="e.g., api.company.com"
-                value={newAsset.name}
-                onChange={(e) => setNewAsset({ ...newAsset, name: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Asset Type</Label>
-              <Select value={newAsset.type} onValueChange={(value) => setNewAsset({ ...newAsset, type: value })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="domain">Domain</SelectItem>
-                  <SelectItem value="ip">IP Address</SelectItem>
-                  <SelectItem value="cloud">Cloud Resource</SelectItem>
-                  <SelectItem value="repo">Repository</SelectItem>
-                  <SelectItem value="saas">SaaS</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Exposure</Label>
-              <Select value={newAsset.exposure} onValueChange={(value) => setNewAsset({ ...newAsset, exposure: value })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select exposure" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="public">Public</SelectItem>
-                  <SelectItem value="internal">Internal</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex justify-end gap-3 pt-4">
-              <Button variant="outline" onClick={() => setIsAddOpen(false)}>Cancel</Button>
-              <Button variant="gradient" onClick={handleAddAsset}>Add Asset</Button>
-            </div>
-          </div>
+
+          <AnimatePresence mode="wait">
+            {!selectedAssetType ? (
+              <motion.div
+                key="type-selection"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="grid grid-cols-2 gap-3 py-4"
+              >
+                {assetTypes.map((type) => {
+                  const Icon = type.icon;
+                  return (
+                    <motion.button
+                      key={type.value}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => setSelectedAssetType(type.value)}
+                      className="p-4 bg-muted/30 hover:bg-muted/50 rounded-xl border border-border hover:border-primary/30 transition-all text-left group"
+                    >
+                      <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center mb-3 group-hover:bg-primary/20 transition-colors">
+                        <Icon className="w-5 h-5 text-primary" />
+                      </div>
+                      <div className="font-medium text-foreground">{type.label}</div>
+                      <div className="text-xs text-muted-foreground mt-1">{type.description}</div>
+                    </motion.button>
+                  );
+                })}
+              </motion.div>
+            ) : (
+              <div key="form" className="py-4">
+                {renderAssetTypeForm()}
+              </div>
+            )}
+          </AnimatePresence>
         </DialogContent>
       </Dialog>
 
-      {/* Edit Asset Dialog */}
+      {/* Edit Dialog */}
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Edit className="w-5 h-5 text-primary" />
-              Edit Asset
-            </DialogTitle>
-            <DialogDescription>
-              Update asset information
-            </DialogDescription>
+            <DialogTitle>Edit Asset</DialogTitle>
+            <DialogDescription>Update asset information</DialogDescription>
           </DialogHeader>
           {selectedAsset && (
             <div className="space-y-4 py-4">
@@ -539,39 +697,42 @@ export function AssetInventory() {
                 <Label>Asset Name</Label>
                 <Input defaultValue={selectedAsset.name} />
               </div>
-              <div className="space-y-2">
-                <Label>Asset Type</Label>
-                <Select defaultValue={selectedAsset.type}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="domain">Domain</SelectItem>
-                    <SelectItem value="ip">IP Address</SelectItem>
-                    <SelectItem value="cloud">Cloud Resource</SelectItem>
-                    <SelectItem value="repo">Repository</SelectItem>
-                    <SelectItem value="saas">SaaS</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Type</Label>
+                  <Select defaultValue={selectedAsset.type}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {assetTypes.map(t => (
+                        <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Exposure</Label>
+                  <Select defaultValue={selectedAsset.exposure}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="public">Public</SelectItem>
+                      <SelectItem value="internal">Internal</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <div className="space-y-2">
-                <Label>Exposure</Label>
-                <Select defaultValue={selectedAsset.exposure}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="public">Public</SelectItem>
-                    <SelectItem value="internal">Internal</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label>Tags</Label>
+                <Input defaultValue={selectedAsset.tags.join(", ")} />
               </div>
-              <div className="flex justify-end gap-3 pt-4">
-                <Button variant="outline" onClick={() => setIsEditOpen(false)}>Cancel</Button>
-                <Button variant="gradient" onClick={() => { 
-                  toast({ title: "Asset Updated", description: "Changes have been saved" });
-                  setIsEditOpen(false);
-                }}>Save Changes</Button>
+              <div className="flex gap-3 pt-4">
+                <Button variant="outline" className="flex-1" onClick={() => setIsEditOpen(false)}>Cancel</Button>
+                <Button variant="gradient" className="flex-1" onClick={() => { toast({ title: "Asset Updated" }); setIsEditOpen(false); }}>
+                  Save Changes
+                </Button>
               </div>
             </div>
           )}
@@ -582,10 +743,9 @@ export function AssetInventory() {
       <AlertDialog open={!!deleteConfirm} onOpenChange={() => setDeleteConfirm(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Asset?</AlertDialogTitle>
+            <AlertDialogTitle>Delete Asset</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete <span className="font-semibold">{deleteConfirm?.name}</span>? 
-              This action cannot be undone.
+              Are you sure you want to delete "{deleteConfirm?.name}"? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -14,13 +14,20 @@ import {
   XCircle,
   Loader2,
   Calendar,
-  Settings,
   Eye,
   RefreshCw,
   AlertTriangle,
   Radar,
   Edit,
+  Globe,
+  Server,
+  Shield,
+  Zap,
+  Target,
+  Network,
+  Bug,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -56,7 +63,8 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
-import { motion } from "framer-motion";
+import { Textarea } from "@/components/ui/textarea";
+import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "@/hooks/use-toast";
 
 const scans = [
@@ -73,13 +81,73 @@ const schedules = [
   { id: 3, name: "Monthly Compliance", nextRun: "Feb 1 03:00", targets: 8, enabled: false },
 ];
 
+const scanTypes = [
+  { 
+    value: "discovery", 
+    label: "Asset Discovery", 
+    icon: Target, 
+    description: "Discover domains, IPs, and services",
+    color: "bg-primary/10 text-primary"
+  },
+  { 
+    value: "vulnerability", 
+    label: "Vulnerability Scan", 
+    icon: Bug, 
+    description: "Scan for known vulnerabilities (CVEs)",
+    color: "bg-destructive/10 text-destructive"
+  },
+  { 
+    value: "webapp", 
+    label: "Web Application", 
+    icon: Globe, 
+    description: "OWASP Top 10 and web security testing",
+    color: "bg-warning/10 text-warning"
+  },
+  { 
+    value: "network", 
+    label: "Network Scan", 
+    icon: Network, 
+    description: "Port scanning and service detection",
+    color: "bg-accent/10 text-accent"
+  },
+  { 
+    value: "cloud", 
+    label: "Cloud Security", 
+    icon: Server, 
+    description: "AWS, Azure, GCP misconfigurations",
+    color: "bg-success/10 text-success"
+  },
+];
+
+// Mock assets from Asset Inventory
+const inventoryAssets = [
+  { id: 1, name: "company.com", type: "domain", ip: "-" },
+  { id: 2, name: "api.company.com", type: "domain", ip: "192.168.1.10" },
+  { id: 3, name: "app.company.com", type: "domain", ip: "192.168.1.11" },
+  { id: 4, name: "staging.company.com", type: "domain", ip: "192.168.1.20" },
+  { id: 5, name: "192.168.1.0/24", type: "ip_range", ip: "-" },
+  { id: 6, name: "AWS Production", type: "cloud", ip: "-" },
+  { id: 7, name: "Azure Dev", type: "cloud", ip: "-" },
+];
+
 export function ScanManager() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isNewScanOpen, setIsNewScanOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; name: string } | null>(null);
   const [selectedScan, setSelectedScan] = useState<typeof scans[0] | null>(null);
-  const [newScan, setNewScan] = useState({ name: "", target: "", type: "", schedule: "" });
+  const [wizardStep, setWizardStep] = useState(1);
+  const [targetMode, setTargetMode] = useState<"inventory" | "manual">("inventory");
+  const [selectedAssets, setSelectedAssets] = useState<number[]>([]);
+  const [newScan, setNewScan] = useState({ 
+    name: "", 
+    target: "", 
+    type: "", 
+    schedule: "manual",
+    intensity: "normal",
+    notifications: true,
+    autoRemediate: false,
+  });
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -109,13 +177,20 @@ export function ScanManager() {
   );
 
   const handleCreateScan = () => {
-    if (!newScan.name || !newScan.target || !newScan.type) {
+    const hasTarget = targetMode === "inventory" ? selectedAssets.length > 0 : newScan.target;
+    if (!newScan.name || !hasTarget || !newScan.type) {
       toast({ title: "Error", description: "Please fill in all required fields", variant: "destructive" });
       return;
     }
-    toast({ title: "Scan Created", description: `${newScan.name} has been created` });
+    toast({ 
+      title: "Scan Created Successfully", 
+      description: `${newScan.name} has been created and ${newScan.schedule === "manual" ? "is ready to run" : "scheduled"}` 
+    });
     setIsNewScanOpen(false);
-    setNewScan({ name: "", target: "", type: "", schedule: "" });
+    setWizardStep(1);
+    setTargetMode("inventory");
+    setSelectedAssets([]);
+    setNewScan({ name: "", target: "", type: "", schedule: "manual", intensity: "normal", notifications: true, autoRemediate: false });
   };
 
   const handleDeleteConfirm = () => {
@@ -127,6 +202,305 @@ export function ScanManager() {
 
   const handleRunScan = (name: string) => {
     toast({ title: "Scan Started", description: `${name} is now running` });
+  };
+
+  const renderWizardStep = () => {
+    switch (wizardStep) {
+      case 1:
+        return (
+          <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            className="space-y-6"
+          >
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 rounded-2xl gradient-bg flex items-center justify-center mx-auto mb-4">
+                <Radar className="w-8 h-8 text-primary-foreground" />
+              </div>
+              <h3 className="text-lg font-semibold text-foreground">Select Scan Type</h3>
+              <p className="text-sm text-muted-foreground">Choose the type of security scan you want to run</p>
+            </div>
+
+            <div className="grid gap-3">
+              {scanTypes.map((type) => {
+                const Icon = type.icon;
+                const isSelected = newScan.type === type.value;
+                return (
+                  <motion.button
+                    key={type.value}
+                    whileHover={{ scale: 1.01 }}
+                    whileTap={{ scale: 0.99 }}
+                    onClick={() => setNewScan({ ...newScan, type: type.value })}
+                    className={`p-4 rounded-xl border-2 transition-all text-left flex items-center gap-4 ${
+                      isSelected 
+                        ? "border-primary bg-primary/5" 
+                        : "border-border hover:border-primary/30 bg-muted/30"
+                    }`}
+                  >
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${type.color}`}>
+                      <Icon className="w-6 h-6" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="font-medium text-foreground">{type.label}</div>
+                      <div className="text-sm text-muted-foreground">{type.description}</div>
+                    </div>
+                    {isSelected && <CheckCircle2 className="w-5 h-5 text-primary" />}
+                  </motion.button>
+                );
+              })}
+            </div>
+          </motion.div>
+        );
+
+      case 2:
+        return (
+          <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            className="space-y-6"
+          >
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 rounded-2xl bg-accent/10 flex items-center justify-center mx-auto mb-4">
+                <Target className="w-8 h-8 text-accent" />
+              </div>
+              <h3 className="text-lg font-semibold text-foreground">Configure Target</h3>
+              <p className="text-sm text-muted-foreground">Select assets from inventory or add new targets</p>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Scan Name</Label>
+                <Input
+                  placeholder="e.g., Weekly Production Scan"
+                  value={newScan.name}
+                  onChange={(e) => setNewScan({ ...newScan, name: e.target.value })}
+                  className="h-12"
+                />
+              </div>
+
+              {/* Target Mode Toggle */}
+              <div className="space-y-3">
+                <Label>Target Selection</Label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => setTargetMode("inventory")}
+                    className={cn(
+                      "p-4 rounded-xl border-2 transition-all text-left",
+                      targetMode === "inventory" 
+                        ? "border-primary bg-primary/5" 
+                        : "border-border hover:border-primary/30"
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Server className="w-5 h-5 text-primary" />
+                      <div>
+                        <div className="font-medium text-foreground text-sm">From Asset Inventory</div>
+                        <div className="text-xs text-muted-foreground">Select existing assets</div>
+                      </div>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => setTargetMode("manual")}
+                    className={cn(
+                      "p-4 rounded-xl border-2 transition-all text-left",
+                      targetMode === "manual" 
+                        ? "border-primary bg-primary/5" 
+                        : "border-border hover:border-primary/30"
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Edit className="w-5 h-5 text-secondary" />
+                      <div>
+                        <div className="font-medium text-foreground text-sm">Manual Entry</div>
+                        <div className="text-xs text-muted-foreground">Enter new targets</div>
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {targetMode === "inventory" ? (
+                <div className="space-y-3">
+                  <Label>Select Assets ({selectedAssets.length} selected)</Label>
+                  <div className="border border-border rounded-xl max-h-48 overflow-y-auto">
+                    {inventoryAssets.map((asset) => {
+                      const isSelected = selectedAssets.includes(asset.id);
+                      return (
+                        <div
+                          key={asset.id}
+                          onClick={() => {
+                            if (isSelected) {
+                              setSelectedAssets(selectedAssets.filter(id => id !== asset.id));
+                            } else {
+                              setSelectedAssets([...selectedAssets, asset.id]);
+                            }
+                          }}
+                          className={cn(
+                            "flex items-center gap-3 p-3 cursor-pointer transition-colors border-b border-border last:border-b-0",
+                            isSelected ? "bg-primary/10" : "hover:bg-muted/50"
+                          )}
+                        >
+                          <div className={cn(
+                            "w-5 h-5 rounded border-2 flex items-center justify-center transition-colors",
+                            isSelected ? "bg-primary border-primary" : "border-muted-foreground/30"
+                          )}>
+                            {isSelected && <CheckCircle2 className="w-3 h-3 text-primary-foreground" />}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-sm text-foreground truncate">{asset.name}</div>
+                            <div className="text-xs text-muted-foreground">{asset.type} {asset.ip !== "-" && `• ${asset.ip}`}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="text-xs text-muted-foreground">Click to select/deselect assets from your inventory</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label>Target</Label>
+                  <Textarea
+                    placeholder={
+                      newScan.type === "network" 
+                        ? "Enter IP addresses or CIDR ranges\ne.g., 192.168.1.0/24, 10.0.0.1-10.0.0.255" 
+                        : newScan.type === "webapp"
+                        ? "Enter URLs to scan\ne.g., https://app.company.com"
+                        : "Enter domains, IPs, or asset identifiers\ne.g., *.company.com, api.company.com"
+                    }
+                    value={newScan.target}
+                    onChange={(e) => setNewScan({ ...newScan, target: e.target.value })}
+                    rows={4}
+                    className="font-mono text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground">Enter one target per line for multiple targets</p>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label>Scan Intensity</Label>
+                <Select value={newScan.intensity} onValueChange={(value) => setNewScan({ ...newScan, intensity: value })}>
+                  <SelectTrigger className="h-12">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="light">
+                      <div className="flex items-center gap-2">
+                        <Zap className="w-4 h-4 text-success" />
+                        <span>Light - Quick scan, minimal impact</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="normal">
+                      <div className="flex items-center gap-2">
+                        <Zap className="w-4 h-4 text-warning" />
+                        <span>Normal - Balanced scan (recommended)</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="aggressive">
+                      <div className="flex items-center gap-2">
+                        <Zap className="w-4 h-4 text-destructive" />
+                        <span>Aggressive - Deep scan, may impact performance</span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </motion.div>
+        );
+
+      case 3:
+        return (
+          <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            className="space-y-6"
+          >
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 rounded-2xl bg-success/10 flex items-center justify-center mx-auto mb-4">
+                <Calendar className="w-8 h-8 text-success" />
+              </div>
+              <h3 className="text-lg font-semibold text-foreground">Schedule & Options</h3>
+              <p className="text-sm text-muted-foreground">Set when and how to run this scan</p>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Schedule</Label>
+                <Select value={newScan.schedule} onValueChange={(value) => setNewScan({ ...newScan, schedule: value })}>
+                  <SelectTrigger className="h-12">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="manual">Run Manually</SelectItem>
+                    <SelectItem value="hourly">Every Hour</SelectItem>
+                    <SelectItem value="daily">Daily</SelectItem>
+                    <SelectItem value="weekly">Weekly</SelectItem>
+                    <SelectItem value="monthly">Monthly</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="p-4 bg-muted/30 rounded-xl space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-medium text-foreground">Email Notifications</div>
+                    <div className="text-sm text-muted-foreground">Get notified when scan completes</div>
+                  </div>
+                  <Switch 
+                    checked={newScan.notifications} 
+                    onCheckedChange={(checked) => setNewScan({ ...newScan, notifications: checked })} 
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-medium text-foreground">Auto-Remediation</div>
+                    <div className="text-sm text-muted-foreground">Automatically fix low-risk issues</div>
+                  </div>
+                  <Switch 
+                    checked={newScan.autoRemediate} 
+                    onCheckedChange={(checked) => setNewScan({ ...newScan, autoRemediate: checked })} 
+                  />
+                </div>
+              </div>
+
+              {/* Summary */}
+              <div className="p-4 bg-primary/5 border border-primary/20 rounded-xl">
+                <h4 className="font-medium text-foreground mb-3">Scan Summary</h4>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Name:</span>
+                    <span className="font-medium text-foreground">{newScan.name || "Not set"}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Type:</span>
+                    <span className="font-medium text-foreground capitalize">{newScan.type || "Not set"}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Target:</span>
+                    <span className="font-medium text-foreground truncate max-w-[200px]">
+                      {targetMode === "inventory" 
+                        ? (selectedAssets.length > 0 ? `${selectedAssets.length} asset(s) selected` : "Not set")
+                        : (newScan.target || "Not set")
+                      }
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Schedule:</span>
+                    <span className="font-medium text-foreground capitalize">{newScan.schedule}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        );
+
+      default:
+        return null;
+    }
   };
 
   return (
@@ -154,7 +528,6 @@ export function ScanManager() {
         </TabsList>
 
         <TabsContent value="scans" className="space-y-4 mt-4">
-          {/* Search */}
           <div className="relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
@@ -165,7 +538,6 @@ export function ScanManager() {
             />
           </div>
 
-          {/* Scans List */}
           <div className="space-y-3">
             {filteredScans.map((scan, index) => (
               <motion.div
@@ -349,7 +721,6 @@ export function ScanManager() {
                         </div>
                       </div>
 
-                      {/* Live Logs */}
                       <div className="p-4 bg-muted/50 rounded-xl font-mono text-xs overflow-y-auto max-h-32 space-y-1">
                         <div className="text-muted-foreground">[14:45:23] Scanning api.company.com...</div>
                         <div className="text-muted-foreground">[14:45:24] Found open port 443</div>
@@ -373,84 +744,75 @@ export function ScanManager() {
         </TabsContent>
       </Tabs>
 
-      {/* New Scan Dialog */}
-      <Dialog open={isNewScanOpen} onOpenChange={setIsNewScanOpen}>
-        <DialogContent className="sm:max-w-lg">
+      {/* New Scan Wizard Dialog */}
+      <Dialog open={isNewScanOpen} onOpenChange={(open) => { setIsNewScanOpen(open); if (!open) setWizardStep(1); }}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Radar className="w-5 h-5 text-primary" />
+              <Shield className="w-5 h-5 text-primary" />
               Create New Scan
             </DialogTitle>
             <DialogDescription>
-              Configure and schedule a new security scan
+              Step {wizardStep} of 3 - {wizardStep === 1 ? "Select Type" : wizardStep === 2 ? "Configure Target" : "Schedule & Options"}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Scan Name</Label>
-              <Input 
-                placeholder="e.g., Weekly External Scan"
-                value={newScan.name}
-                onChange={(e) => setNewScan({ ...newScan, name: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Target</Label>
-              <Input 
-                placeholder="e.g., *.company.com, 10.0.0.0/24"
-                value={newScan.target}
-                onChange={(e) => setNewScan({ ...newScan, target: e.target.value })}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Scan Type</Label>
-                <Select value={newScan.type} onValueChange={(value) => setNewScan({ ...newScan, type: value })}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="external">External</SelectItem>
-                    <SelectItem value="internal">Internal</SelectItem>
-                    <SelectItem value="webapp">Web Application</SelectItem>
-                    <SelectItem value="cloud">Cloud</SelectItem>
-                  </SelectContent>
-                </Select>
+
+          {/* Progress Indicator */}
+          <div className="flex items-center gap-2 py-2">
+            {[1, 2, 3].map((step) => (
+              <div key={step} className="flex-1 flex items-center">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors ${
+                  step === wizardStep 
+                    ? "bg-primary text-primary-foreground" 
+                    : step < wizardStep 
+                    ? "bg-success text-success-foreground"
+                    : "bg-muted text-muted-foreground"
+                }`}>
+                  {step < wizardStep ? <CheckCircle2 className="w-4 h-4" /> : step}
+                </div>
+                {step < 3 && (
+                  <div className={`flex-1 h-1 mx-2 rounded ${step < wizardStep ? "bg-success" : "bg-muted"}`} />
+                )}
               </div>
-              <div className="space-y-2">
-                <Label>Schedule</Label>
-                <Select value={newScan.schedule} onValueChange={(value) => setNewScan({ ...newScan, schedule: value })}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select schedule" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="manual">Manual</SelectItem>
-                    <SelectItem value="daily">Daily</SelectItem>
-                    <SelectItem value="weekly">Weekly</SelectItem>
-                    <SelectItem value="monthly">Monthly</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="flex justify-end gap-3 pt-4">
-              <Button variant="outline" onClick={() => setIsNewScanOpen(false)}>Cancel</Button>
-              <Button variant="gradient" onClick={handleCreateScan}>Create Scan</Button>
-            </div>
+            ))}
+          </div>
+
+          <AnimatePresence mode="wait">
+            {renderWizardStep()}
+          </AnimatePresence>
+
+          {/* Navigation */}
+          <div className="flex gap-3 pt-4 border-t border-border">
+            {wizardStep > 1 && (
+              <Button variant="outline" className="flex-1" onClick={() => setWizardStep(wizardStep - 1)}>
+                Back
+              </Button>
+            )}
+            {wizardStep < 3 ? (
+              <Button 
+                variant="gradient" 
+                className="flex-1" 
+                onClick={() => setWizardStep(wizardStep + 1)}
+                disabled={wizardStep === 1 && !newScan.type}
+              >
+                Continue
+              </Button>
+            ) : (
+              <Button variant="gradient" className="flex-1" onClick={handleCreateScan}>
+                <Radar className="w-4 h-4 mr-2" />
+                Create Scan
+              </Button>
+            )}
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Edit Scan Dialog */}
+      {/* Edit Dialog */}
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Edit className="w-5 h-5 text-primary" />
-              Edit Scan
-            </DialogTitle>
-            <DialogDescription>
-              Update scan configuration
-            </DialogDescription>
+            <DialogTitle>Edit Scan</DialogTitle>
+            <DialogDescription>Update scan configuration</DialogDescription>
           </DialogHeader>
           {selectedScan && (
             <div className="space-y-4 py-4">
@@ -464,16 +826,15 @@ export function ScanManager() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Scan Type</Label>
+                  <Label>Type</Label>
                   <Select defaultValue={selectedScan.type}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="external">External</SelectItem>
-                      <SelectItem value="internal">Internal</SelectItem>
-                      <SelectItem value="webapp">Web Application</SelectItem>
-                      <SelectItem value="cloud">Cloud</SelectItem>
+                      {scanTypes.map(t => (
+                        <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -492,12 +853,11 @@ export function ScanManager() {
                   </Select>
                 </div>
               </div>
-              <div className="flex justify-end gap-3 pt-4">
-                <Button variant="outline" onClick={() => setIsEditOpen(false)}>Cancel</Button>
-                <Button variant="gradient" onClick={() => {
-                  toast({ title: "Scan Updated", description: "Changes have been saved" });
-                  setIsEditOpen(false);
-                }}>Save Changes</Button>
+              <div className="flex gap-3 pt-4">
+                <Button variant="outline" className="flex-1" onClick={() => setIsEditOpen(false)}>Cancel</Button>
+                <Button variant="gradient" className="flex-1" onClick={() => { toast({ title: "Scan Updated" }); setIsEditOpen(false); }}>
+                  Save Changes
+                </Button>
               </div>
             </div>
           )}
@@ -508,10 +868,9 @@ export function ScanManager() {
       <AlertDialog open={!!deleteConfirm} onOpenChange={() => setDeleteConfirm(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Scan?</AlertDialogTitle>
+            <AlertDialogTitle>Delete Scan</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete <span className="font-semibold">{deleteConfirm?.name}</span>? 
-              This will also remove all scan history and results.
+              Are you sure you want to delete "{deleteConfirm?.name}"? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

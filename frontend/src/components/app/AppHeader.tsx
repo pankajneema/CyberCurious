@@ -1,4 +1,4 @@
-import { Bell, Search, Plus, User } from "lucide-react";
+import { Bell, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -25,27 +25,6 @@ export function AppHeader() {
 
       {/* Actions */}
       <div className="flex items-center gap-3 ml-auto">
-        {/* Quick Actions */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="gradient" size="sm">
-              <Plus className="w-4 h-4" />
-              <span className="hidden sm:inline">New Scan</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuLabel>Quick Actions</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link to="/app/asm">Run ASM Discovery</Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link to="/app/vs">New Vulnerability Scan</Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem disabled>Start Phishing Campaign</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
         {/* Notifications */}
         <Button variant="ghost" size="icon" className="relative">
           <Bell className="w-5 h-5" />

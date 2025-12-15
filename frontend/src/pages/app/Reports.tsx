@@ -17,8 +17,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 import {
   FileText,
   Download,
@@ -35,6 +38,11 @@ import {
   Search,
   Trash2,
   Edit,
+  Printer,
+  Share2,
+  AlertTriangle,
+  CheckCircle2,
+  ExternalLink,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { toast } from "@/hooks/use-toast";
@@ -57,10 +65,22 @@ const scheduledReports = [
   { id: 4, name: "Monthly Compliance Report", module: "all", frequency: "Monthly", nextRun: "Feb 1 08:00", recipients: ["compliance@company.com"], enabled: true },
 ];
 
+interface Report {
+  id: number;
+  name: string;
+  type: string;
+  module: string;
+  date: string;
+  format: string;
+  size: string;
+  status: string;
+}
+
 export default function Reports() {
   const [isNewReportOpen, setIsNewReportOpen] = useState(false);
   const [moduleFilter, setModuleFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedReport, setSelectedReport] = useState<Report | null>(null);
 
   const getTypeIcon = (type: string) => {
     switch (type) {
@@ -308,14 +328,19 @@ export default function Reports() {
                     <td className="p-4 text-sm text-muted-foreground">{report.size}</td>
                     <td className="p-4">
                       <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-8 w-8"
+                          onClick={(e) => { e.stopPropagation(); setSelectedReport(report); }}
+                        >
                           <Eye className="w-4 h-4" />
                         </Button>
                         <Button 
                           variant="ghost" 
                           size="icon" 
                           className="h-8 w-8"
-                          onClick={() => handleDownload(report.name)}
+                          onClick={(e) => { e.stopPropagation(); handleDownload(report.name); }}
                         >
                           <Download className="w-4 h-4" />
                         </Button>
@@ -323,11 +348,16 @@ export default function Reports() {
                           variant="ghost" 
                           size="icon" 
                           className="h-8 w-8"
-                          onClick={() => handleEmail(report.name)}
+                          onClick={(e) => { e.stopPropagation(); handleEmail(report.name); }}
                         >
                           <Mail className="w-4 h-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive">
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-8 w-8 text-destructive"
+                          onClick={(e) => { e.stopPropagation(); toast({ title: "Report Deleted", description: `${report.name} has been deleted.` }); }}
+                        >
                           <Trash2 className="w-4 h-4" />
                         </Button>
                       </div>
@@ -425,6 +455,183 @@ export default function Reports() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Report Viewer Sheet */}
+      <Sheet open={!!selectedReport} onOpenChange={() => setSelectedReport(null)}>
+        <SheetContent className="w-full sm:max-w-3xl overflow-hidden flex flex-col">
+          {selectedReport && (
+            <>
+              <SheetHeader className="pb-4 border-b border-border">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    {getTypeIcon(selectedReport.type)}
+                    <div>
+                      <SheetTitle className="text-lg">{selectedReport.name}</SheetTitle>
+                      <div className="flex items-center gap-2 mt-1">
+                        {getModuleBadge(selectedReport.module)}
+                        <span className="text-xs text-muted-foreground">{selectedReport.date}</span>
+                        <span className="text-xs text-muted-foreground">•</span>
+                        <span className="text-xs text-muted-foreground">{selectedReport.format}</span>
+                        <span className="text-xs text-muted-foreground">•</span>
+                        <span className="text-xs text-muted-foreground">{selectedReport.size}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-4">
+                  <Button variant="gradient" size="sm" onClick={() => handleDownload(selectedReport.name)}>
+                    <Download className="w-4 h-4 mr-2" />
+                    Download
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => handleEmail(selectedReport.name)}>
+                    <Mail className="w-4 h-4 mr-2" />
+                    Email
+                  </Button>
+                  <Button variant="outline" size="sm">
+                    <Printer className="w-4 h-4 mr-2" />
+                    Print
+                  </Button>
+                  <Button variant="outline" size="sm">
+                    <Share2 className="w-4 h-4 mr-2" />
+                    Share
+                  </Button>
+                </div>
+              </SheetHeader>
+
+              <ScrollArea className="flex-1 mt-4">
+                <div className="space-y-6 pr-4">
+                  {/* Report Summary Card */}
+                  <div className="p-5 bg-muted/30 rounded-xl border border-border/50">
+                    <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
+                      <PieChart className="w-5 h-5 text-primary" />
+                      Executive Summary
+                    </h3>
+                    <p className="text-sm text-muted-foreground leading-relaxed mb-4">
+                      This report provides a comprehensive analysis of your security posture covering the period from {selectedReport.date}. 
+                      The analysis includes findings from attack surface discovery, vulnerability assessments, and compliance checks.
+                    </p>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="p-3 bg-background rounded-lg text-center">
+                        <div className="text-2xl font-bold text-foreground">156</div>
+                        <div className="text-xs text-muted-foreground">Total Assets</div>
+                      </div>
+                      <div className="p-3 bg-background rounded-lg text-center">
+                        <div className="text-2xl font-bold text-destructive">23</div>
+                        <div className="text-xs text-muted-foreground">Vulnerabilities</div>
+                      </div>
+                      <div className="p-3 bg-background rounded-lg text-center">
+                        <div className="text-2xl font-bold text-success">87%</div>
+                        <div className="text-xs text-muted-foreground">Compliance</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Key Findings */}
+                  <div className="space-y-3">
+                    <h3 className="font-semibold text-foreground flex items-center gap-2">
+                      <AlertTriangle className="w-5 h-5 text-warning" />
+                      Key Findings
+                    </h3>
+                    {[
+                      { severity: "critical", title: "Critical RCE vulnerability in Apache Log4j", count: 3 },
+                      { severity: "high", title: "Exposed admin endpoints discovered", count: 5 },
+                      { severity: "medium", title: "SSL/TLS configuration issues", count: 8 },
+                      { severity: "low", title: "Informational headers exposure", count: 12 },
+                    ].map((finding, i) => (
+                      <div key={i} className="flex items-center gap-3 p-3 bg-muted/20 rounded-lg">
+                        <Badge variant="outline" className={
+                          finding.severity === "critical" ? "bg-destructive/10 text-destructive border-destructive/20" :
+                          finding.severity === "high" ? "bg-warning/10 text-warning border-warning/20" :
+                          finding.severity === "medium" ? "bg-accent/10 text-accent border-accent/20" :
+                          "bg-success/10 text-success border-success/20"
+                        }>
+                          {finding.severity}
+                        </Badge>
+                        <span className="flex-1 text-sm">{finding.title}</span>
+                        <span className="text-sm font-medium text-muted-foreground">{finding.count}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <Separator />
+
+                  {/* Compliance Status */}
+                  <div className="space-y-3">
+                    <h3 className="font-semibold text-foreground flex items-center gap-2">
+                      <Shield className="w-5 h-5 text-primary" />
+                      Compliance Status
+                    </h3>
+                    <div className="grid grid-cols-2 gap-3">
+                      {[
+                        { framework: "SOC2", score: 92, status: "passing" },
+                        { framework: "GDPR", score: 88, status: "passing" },
+                        { framework: "ISO 27001", score: 75, status: "warning" },
+                        { framework: "HIPAA", score: 95, status: "passing" },
+                      ].map((item, i) => (
+                        <div key={i} className="p-3 bg-muted/20 rounded-lg">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-medium">{item.framework}</span>
+                            <span className={`text-sm font-bold ${item.status === "passing" ? "text-success" : "text-warning"}`}>
+                              {item.score}%
+                            </span>
+                          </div>
+                          <div className="h-2 bg-muted rounded-full overflow-hidden">
+                            <div 
+                              className={`h-full rounded-full ${item.status === "passing" ? "bg-success" : "bg-warning"}`}
+                              style={{ width: `${item.score}%` }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  {/* Recommendations */}
+                  <div className="space-y-3">
+                    <h3 className="font-semibold text-foreground flex items-center gap-2">
+                      <CheckCircle2 className="w-5 h-5 text-success" />
+                      Recommendations
+                    </h3>
+                    {[
+                      "Immediately patch all critical vulnerabilities identified in the scan",
+                      "Update SSL/TLS configuration to disable weak cipher suites",
+                      "Implement proper access controls for admin endpoints",
+                      "Review and update firewall rules based on findings",
+                    ].map((rec, i) => (
+                      <div key={i} className="flex items-start gap-3 p-3 bg-muted/20 rounded-lg">
+                        <span className="w-6 h-6 rounded-full bg-primary/10 text-primary text-sm font-bold flex items-center justify-center shrink-0">
+                          {i + 1}
+                        </span>
+                        <span className="text-sm">{rec}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Report Metadata */}
+                  <div className="p-4 bg-muted/20 rounded-xl text-sm text-muted-foreground">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <span className="font-medium text-foreground">Generated:</span> {selectedReport.date} 14:30 UTC
+                      </div>
+                      <div>
+                        <span className="font-medium text-foreground">Format:</span> {selectedReport.format}
+                      </div>
+                      <div>
+                        <span className="font-medium text-foreground">Size:</span> {selectedReport.size}
+                      </div>
+                      <div>
+                        <span className="font-medium text-foreground">Status:</span> {selectedReport.status}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </ScrollArea>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
