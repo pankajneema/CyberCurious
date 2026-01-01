@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SeverityBadge } from "./SeverityBadge";
@@ -22,7 +22,6 @@ import {
   X,
   Users,
   Shield,
-  Network,
   Upload,
   FileText,
   CheckCircle2,
@@ -65,17 +64,16 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { toast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-
-const assets = [
-  { id: 1, name: "api.company.com", type: "domain", exposure: "public", risk: 78, tags: ["production", "api"], lastSeen: "2 min ago", status: "active" },
-  { id: 2, name: "192.168.1.100", type: "ip", exposure: "internal", risk: 45, tags: ["database"], lastSeen: "5 min ago", status: "active" },
-  { id: 3, name: "aws-s3-backup", type: "cloud", exposure: "public", risk: 92, tags: ["aws", "storage"], lastSeen: "10 min ago", status: "critical" },
-  { id: 4, name: "github.com/company/repo", type: "repo", exposure: "public", risk: 35, tags: ["code"], lastSeen: "1 hour ago", status: "active" },
-  { id: 5, name: "mail.company.com", type: "domain", exposure: "public", risk: 67, tags: ["email", "production"], lastSeen: "15 min ago", status: "warning" },
-  { id: 6, name: "staging.company.com", type: "domain", exposure: "internal", risk: 23, tags: ["staging"], lastSeen: "30 min ago", status: "active" },
-  { id: 7, name: "slack-workspace", type: "saas", exposure: "internal", risk: 18, tags: ["communication"], lastSeen: "1 hour ago", status: "active" },
-  { id: 8, name: "10.0.0.50", type: "ip", exposure: "internal", risk: 56, tags: ["server"], lastSeen: "45 min ago", status: "warning" },
-];
+import {
+  fetchAssets,
+  createAsset,
+  updateAsset,
+  deleteAsset,
+  type ApiAsset,
+  type AssetListParams,
+  type CreateAssetPayload,
+  type UpdateAssetPayload,
+} from "@/lib/api";
 
 const typeIcons: Record<string, typeof Globe> = {
   domain: Globe,
@@ -97,29 +95,68 @@ const assetTypes = [
 
 export function AssetInventory() {
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedAssets, setSelectedAssets] = useState<number[]>([]);
-  const [selectedAsset, setSelectedAsset] = useState<typeof assets[0] | null>(null);
+  const [assets, setAssets] = useState<ApiAsset[]>([]);
+  const [selectedAssets, setSelectedAssets] = useState<string[]>([]);
+  const [selectedAsset, setSelectedAsset] = useState<ApiAsset | null>(null);
   const [typeFilter, setTypeFilter] = useState("all");
   const [exposureFilter, setExposureFilter] = useState("all");
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; name: string } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
   const [selectedAssetType, setSelectedAssetType] = useState<string | null>(null);
   const [newAsset, setNewAsset] = useState({
     name: "",
-    type: "",
-    exposure: "public",
+    type: "" as ApiAsset["type"] | "",
+    exposure: "public" as ApiAsset["exposure"],
     tags: "",
     description: "",
     bulkInput: "",
+    department: "",
+    accessLevel: "",
+    cloudProvider: "",
   });
+  const [editForm, setEditForm] = useState<UpdateAssetPayload>({});
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const filteredAssets = assets.filter((asset) => {
-    const matchesSearch = asset.name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesType = typeFilter === "all" || asset.type === typeFilter;
-    const matchesExposure = exposureFilter === "all" || asset.exposure === exposureFilter;
-    return matchesSearch && matchesType && matchesExposure;
-  });
+  // Fetch assets with filters
+  useEffect(() => {
+    const controller = new AbortController();
+    
+    const loadAssets = async () => {
+      try {
+        setIsLoading(true);
+        setLoadError(null);
+
+        const params: AssetListParams = {
+          q: searchQuery || undefined,
+          type: typeFilter !== "all" ? typeFilter : undefined,
+          exposure: exposureFilter !== "all" ? exposureFilter : undefined,
+        };
+
+        const data = await fetchAssets(params);
+        setAssets(data.items);
+      } catch (err: any) {
+        if (err.name !== "AbortError") {
+          console.error("Failed to load assets:", err);
+          setLoadError(err.message || "Failed to load assets");
+          toast({
+            title: "Error loading assets",
+            description: err.message || "Could not fetch assets from server",
+            variant: "destructive",
+          });
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadAssets();
+    return () => controller.abort();
+  }, [searchQuery, typeFilter, exposureFilter]);
+
+  const filteredAssets = assets;
 
   const toggleSelectAll = () => {
     if (selectedAssets.length === filteredAssets.length) {
@@ -129,7 +166,7 @@ export function AssetInventory() {
     }
   };
 
-  const toggleSelect = (id: number) => {
+  const toggleSelect = (id: string) => {
     setSelectedAssets((prev) =>
       prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
     );
@@ -142,35 +179,223 @@ export function AssetInventory() {
     return "low";
   };
 
-  const handleAddAsset = () => {
+  const handleAddAsset = async () => {
     if (!newAsset.name && !newAsset.bulkInput) {
-      toast({ title: "Error", description: "Please enter asset details", variant: "destructive" });
+      toast({ 
+        title: "Validation Error", 
+        description: "Please enter asset details", 
+        variant: "destructive" 
+      });
       return;
     }
 
-    const assetsToAdd = newAsset.bulkInput 
-      ? newAsset.bulkInput.split("\n").filter(line => line.trim()).length
-      : 1;
+    if (!selectedAssetType) {
+      toast({ 
+        title: "Validation Error", 
+        description: "Please select an asset type", 
+        variant: "destructive" 
+      });
+      return;
+    }
 
-    toast({ 
-      title: "Assets Added", 
-      description: `${assetsToAdd} asset${assetsToAdd > 1 ? 's' : ''} added successfully` 
-    });
-    setIsAddOpen(false);
-    setSelectedAssetType(null);
-    setNewAsset({ name: "", type: "", exposure: "public", tags: "", description: "", bulkInput: "" });
-  };
+    setIsSubmitting(true);
 
-  const handleDeleteConfirm = () => {
-    if (deleteConfirm) {
-      toast({ title: "Asset Deleted", description: `${deleteConfirm.name} has been removed` });
-      setDeleteConfirm(null);
+    try {
+      if (newAsset.name) {
+        const payload: CreateAssetPayload = {
+          name: newAsset.name.trim(),
+          type: selectedAssetType as ApiAsset["type"],
+          exposure: newAsset.exposure,
+          tags: newAsset.tags
+            ? newAsset.tags.split(",").map((t) => t.trim()).filter(Boolean)
+            : [],
+        };
+
+        const createdAsset = await createAsset(payload);
+        
+        setAssets((prev) => [createdAsset, ...prev]);
+        
+        toast({
+          title: "Asset Added",
+          description: `${createdAsset.name} has been added successfully`,
+        });
+      } else if (newAsset.bulkInput) {
+        const lines = newAsset.bulkInput.split("\n").filter((l) => l.trim());
+        let successCount = 0;
+        let failCount = 0;
+
+        for (const line of lines) {
+          try {
+            const payload: CreateAssetPayload = {
+              name: line.trim(),
+              type: selectedAssetType as ApiAsset["type"],
+              exposure: newAsset.exposure,
+              tags: newAsset.tags
+                ? newAsset.tags.split(",").map((t) => t.trim()).filter(Boolean)
+                : [],
+            };
+
+            const createdAsset = await createAsset(payload);
+            setAssets((prev) => [createdAsset, ...prev]);
+            successCount++;
+          } catch (err) {
+            console.error(`Failed to add ${line}:`, err);
+            failCount++;
+          }
+        }
+
+        toast({
+          title: "Bulk Import Complete",
+          description: `${successCount} asset${successCount !== 1 ? "s" : ""} added successfully${failCount > 0 ? `, ${failCount} failed` : ""}`,
+          variant: failCount > 0 ? "destructive" : "default",
+        });
+      }
+
+      // Reset form
+      setIsAddOpen(false);
+      setSelectedAssetType(null);
+      setNewAsset({
+        name: "",
+        type: "",
+        exposure: "public",
+        tags: "",
+        description: "",
+        bulkInput: "",
+        department: "",
+        accessLevel: "",
+        cloudProvider: "",
+      });
+    } catch (err: any) {
+      console.error("Failed to add asset:", err);
+      toast({
+        title: "Error adding asset",
+        description: err.message || "Failed to add asset to inventory",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const handleBulkDelete = () => {
-    toast({ title: "Assets Deleted", description: `${selectedAssets.length} assets have been removed` });
-    setSelectedAssets([]);
+  const handleUpdateAsset = async () => {
+    if (!selectedAsset) return;
+
+    setIsSubmitting(true);
+
+    try {
+      const payload: UpdateAssetPayload = {
+        name: editForm.name?.trim(),
+        exposure: editForm.exposure,
+        tags: editForm.tags,
+        status: editForm.status,
+      };
+
+      const updatedAsset = await updateAsset(selectedAsset.id, payload);
+      
+      setAssets((prev) =>
+        prev.map((a) => (a.id === updatedAsset.id ? updatedAsset : a))
+      );
+      
+      setSelectedAsset(updatedAsset);
+      
+      toast({
+        title: "Asset Updated",
+        description: `${updatedAsset.name} has been updated successfully`,
+      });
+      
+      setIsEditOpen(false);
+      setEditForm({});
+    } catch (err: any) {
+      console.error("Failed to update asset:", err);
+      toast({
+        title: "Error updating asset",
+        description: err.message || "Failed to update asset",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteConfirm) return;
+
+    setIsSubmitting(true);
+
+    try {
+      await deleteAsset(deleteConfirm.id);
+      
+      setAssets((prev) => prev.filter((a) => a.id !== deleteConfirm.id));
+      
+      toast({ 
+        title: "Asset Deleted", 
+        description: `${deleteConfirm.name} has been removed from inventory` 
+      });
+      
+      setDeleteConfirm(null);
+      
+      if (selectedAsset?.id === deleteConfirm.id) {
+        setSelectedAsset(null);
+      }
+    } catch (err: any) {
+      console.error("Failed to delete asset:", err);
+      toast({
+        title: "Error deleting asset",
+        description: err.message || "Failed to delete asset",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedAssets.length === 0) return;
+
+    setIsSubmitting(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    try {
+      for (const assetId of selectedAssets) {
+        try {
+          await deleteAsset(assetId);
+          successCount++;
+        } catch (err) {
+          console.error(`Failed to delete asset ${assetId}:`, err);
+          failCount++;
+        }
+      }
+
+      setAssets((prev) => prev.filter((a) => !selectedAssets.includes(a.id)));
+      setSelectedAssets([]);
+
+      toast({
+        title: "Bulk Delete Complete",
+        description: `${successCount} asset${successCount !== 1 ? "s" : ""} deleted${failCount > 0 ? `, ${failCount} failed` : ""}`,
+        variant: failCount > 0 ? "destructive" : "default",
+      });
+    } catch (err: any) {
+      console.error("Bulk delete error:", err);
+      toast({
+        title: "Error during bulk delete",
+        description: err.message || "Some assets could not be deleted",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const openEditDialog = (asset: ApiAsset) => {
+    setSelectedAsset(asset);
+    setEditForm({
+      name: asset.name,
+      exposure: asset.exposure,
+      tags: asset.tags,
+      status: asset.status,
+    });
+    setIsEditOpen(true);
   };
 
   const renderAssetTypeForm = () => {
@@ -225,7 +450,7 @@ export function AssetInventory() {
               <>
                 <div className="space-y-2">
                   <Label>Department</Label>
-                  <Select>
+                  <Select value={newAsset.department} onValueChange={(v) => setNewAsset({ ...newAsset, department: v })}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select department" />
                     </SelectTrigger>
@@ -241,7 +466,7 @@ export function AssetInventory() {
                 </div>
                 <div className="space-y-2">
                   <Label>Access Level</Label>
-                  <Select>
+                  <Select value={newAsset.accessLevel} onValueChange={(v) => setNewAsset({ ...newAsset, accessLevel: v })}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select access level" />
                     </SelectTrigger>
@@ -259,7 +484,7 @@ export function AssetInventory() {
             {selectedAssetType === "cloud" && (
               <div className="space-y-2">
                 <Label>Cloud Provider</Label>
-                <Select>
+                <Select value={newAsset.cloudProvider} onValueChange={(v) => setNewAsset({ ...newAsset, cloudProvider: v })}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select provider" />
                   </SelectTrigger>
@@ -277,7 +502,7 @@ export function AssetInventory() {
               <Label>Exposure</Label>
               <Select 
                 value={newAsset.exposure} 
-                onValueChange={(value) => setNewAsset({ ...newAsset, exposure: value })}
+                onValueChange={(value: ApiAsset["exposure"]) => setNewAsset({ ...newAsset, exposure: value })}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -316,7 +541,7 @@ export function AssetInventory() {
                 <span className="text-sm font-medium text-foreground">Bulk Import</span>
               </div>
               <p className="text-sm text-muted-foreground mb-4">
-                Enter one {selectedAssetType === "ip" ? "IP/CIDR" : selectedAssetType === "domain" ? "domain" : "asset"} per line, or upload a CSV file
+                Enter one {selectedAssetType === "ip" ? "IP/CIDR" : selectedAssetType === "domain" ? "domain" : "asset"} per line
               </p>
               <Textarea
                 placeholder={
@@ -343,12 +568,22 @@ export function AssetInventory() {
         </Tabs>
 
         <div className="flex gap-3 pt-4 border-t border-border">
-          <Button variant="outline" className="flex-1" onClick={() => setSelectedAssetType(null)}>
+          <Button 
+            variant="outline" 
+            className="flex-1" 
+            onClick={() => setSelectedAssetType(null)}
+            disabled={isSubmitting}
+          >
             Back
           </Button>
-          <Button variant="gradient" className="flex-1" onClick={handleAddAsset}>
+          <Button 
+            variant="gradient" 
+            className="flex-1" 
+            onClick={handleAddAsset}
+            disabled={isSubmitting}
+          >
             <CheckCircle2 className="w-4 h-4 mr-2" />
-            Add Asset{newAsset.bulkInput ? "s" : ""}
+            {isSubmitting ? "Adding..." : `Add Asset${newAsset.bulkInput ? "s" : ""}`}
           </Button>
         </div>
       </motion.div>
@@ -364,7 +599,9 @@ export function AssetInventory() {
             <Server className="w-5 h-5 text-primary" />
             Asset Inventory
           </h2>
-          <p className="text-sm text-muted-foreground">{assets.length} assets discovered</p>
+          <p className="text-sm text-muted-foreground">
+            {isLoading ? "Loading assets..." : `${assets.length} assets discovered`}
+          </p>
         </div>
         <div className="flex gap-3">
           <Button variant="outline">
@@ -401,6 +638,7 @@ export function AssetInventory() {
               <SelectItem value="cloud">Cloud</SelectItem>
               <SelectItem value="repo">Repository</SelectItem>
               <SelectItem value="saas">SaaS</SelectItem>
+              <SelectItem value="user">User</SelectItem>
             </SelectContent>
           </Select>
           <Select value={exposureFilter} onValueChange={setExposureFilter}>
@@ -437,7 +675,13 @@ export function AssetInventory() {
                 <UserPlus className="w-4 h-4 mr-1" />
                 Assign
               </Button>
-              <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={handleBulkDelete}>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="text-destructive hover:text-destructive" 
+                onClick={handleBulkDelete}
+                disabled={isSubmitting}
+              >
                 <Trash2 className="w-4 h-4 mr-1" />
                 Delete
               </Button>
@@ -451,6 +695,11 @@ export function AssetInventory() {
 
       {/* Table */}
       <div className="bg-card rounded-2xl border border-border overflow-hidden shadow-sm">
+        {loadError && (
+          <div className="p-4 text-sm text-destructive border-b border-border">
+            {loadError}
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-muted/50">
@@ -511,7 +760,7 @@ export function AssetInventory() {
                       </span>
                     </td>
                     <td className="p-4">
-                      <SeverityBadge severity={getSeverity(asset.risk) as any} showDot={false} />
+                      <SeverityBadge severity={getSeverity(asset.risk_score) as any} showDot={false} />
                     </td>
                     <td className="p-4">
                       <div className="flex flex-wrap gap-1">
@@ -527,7 +776,9 @@ export function AssetInventory() {
                         )}
                       </div>
                     </td>
-                    <td className="p-4 text-sm text-muted-foreground">{asset.lastSeen}</td>
+                    <td className="p-4 text-sm text-muted-foreground">
+                      {asset.last_seen ?? "—"}
+                    </td>
                     <td className="p-4" onClick={(e) => e.stopPropagation()}>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -539,7 +790,7 @@ export function AssetInventory() {
                           <DropdownMenuItem onClick={() => setSelectedAsset(asset)}>
                             <Eye className="w-4 h-4 mr-2" />View Details
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => { setSelectedAsset(asset); setIsEditOpen(true); }}>
+                          <DropdownMenuItem onClick={() => openEditDialog(asset)}>
                             <Edit className="w-4 h-4 mr-2" />Edit
                           </DropdownMenuItem>
                           <DropdownMenuItem>
@@ -564,7 +815,7 @@ export function AssetInventory() {
             </tbody>
           </table>
         </div>
-        {filteredAssets.length === 0 && (
+        {filteredAssets.length === 0 && !isLoading && !loadError && (
           <EmptyState
             icon={Server}
             title="No assets found"
@@ -593,7 +844,7 @@ export function AssetInventory() {
                 <div className="flex flex-wrap gap-2">
                   <Button variant="outline" size="sm"><RefreshCw className="w-4 h-4 mr-1" />Re-scan</Button>
                   <Button variant="outline" size="sm"><UserPlus className="w-4 h-4 mr-1" />Assign</Button>
-                  <Button variant="outline" size="sm" onClick={() => setIsEditOpen(true)}><Edit className="w-4 h-4 mr-1" />Edit</Button>
+                  <Button variant="outline" size="sm" onClick={() => openEditDialog(selectedAsset)}><Edit className="w-4 h-4 mr-1" />Edit</Button>
                 </div>
 
                 <div className="space-y-4">
@@ -609,23 +860,33 @@ export function AssetInventory() {
                     </div>
                     <div className="p-4 bg-muted/30 rounded-xl">
                       <div className="text-xs text-muted-foreground mb-1">Risk Score</div>
-                      <div className="text-sm font-medium">{selectedAsset.risk}/100</div>
+                      <div className="text-sm font-medium">{selectedAsset.risk_score}/100</div>
                     </div>
                     <div className="p-4 bg-muted/30 rounded-xl">
                       <div className="text-xs text-muted-foreground mb-1">Last Seen</div>
-                      <div className="text-sm font-medium">{selectedAsset.lastSeen}</div>
+                      <div className="text-sm font-medium">{selectedAsset.last_seen ?? "—"}</div>
                     </div>
+                    {selectedAsset.status && (
+                      <div className="p-4 bg-muted/30 rounded-xl col-span-2">
+                        <div className="text-xs text-muted-foreground mb-1">Status</div>
+                        <div className="text-sm font-medium capitalize">{selectedAsset.status}</div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
                 <div className="space-y-3">
                   <h4 className="font-medium text-foreground">Tags</h4>
                   <div className="flex flex-wrap gap-2">
-                    {selectedAsset.tags.map((tag) => (
-                      <span key={tag} className="px-3 py-1.5 bg-primary/10 text-primary text-sm rounded-lg">
-                        {tag}
-                      </span>
-                    ))}
+                    {selectedAsset.tags.length > 0 ? (
+                      selectedAsset.tags.map((tag) => (
+                        <span key={tag} className="px-3 py-1.5 bg-primary/10 text-primary text-sm rounded-lg">
+                          {tag}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-sm text-muted-foreground">No tags assigned</span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -695,25 +956,18 @@ export function AssetInventory() {
             <div className="space-y-4 py-4">
               <div className="space-y-2">
                 <Label>Asset Name</Label>
-                <Input defaultValue={selectedAsset.name} />
+                <Input 
+                  value={editForm.name ?? selectedAsset.name} 
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Type</Label>
-                  <Select defaultValue={selectedAsset.type}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {assetTypes.map(t => (
-                        <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
                   <Label>Exposure</Label>
-                  <Select defaultValue={selectedAsset.exposure}>
+                  <Select 
+                    value={editForm.exposure ?? selectedAsset.exposure}
+                    onValueChange={(value: ApiAsset["exposure"]) => setEditForm({ ...editForm, exposure: value })}
+                  >
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -723,15 +977,49 @@ export function AssetInventory() {
                     </SelectContent>
                   </Select>
                 </div>
+                <div className="space-y-2">
+                  <Label>Status</Label>
+                  <Select 
+                    value={editForm.status ?? selectedAsset.status ?? "active"}
+                    onValueChange={(value: ApiAsset["status"]) => setEditForm({ ...editForm, status: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="inactive">Inactive</SelectItem>
+                      <SelectItem value="archived">Archived</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <div className="space-y-2">
-                <Label>Tags</Label>
-                <Input defaultValue={selectedAsset.tags.join(", ")} />
+                <Label>Tags (comma-separated)</Label>
+                <Input 
+                  value={editForm.tags ? editForm.tags.join(", ") : selectedAsset.tags.join(", ")}
+                  onChange={(e) => setEditForm({ 
+                    ...editForm, 
+                    tags: e.target.value.split(",").map(t => t.trim()).filter(Boolean)
+                  })}
+                />
               </div>
               <div className="flex gap-3 pt-4">
-                <Button variant="outline" className="flex-1" onClick={() => setIsEditOpen(false)}>Cancel</Button>
-                <Button variant="gradient" className="flex-1" onClick={() => { toast({ title: "Asset Updated" }); setIsEditOpen(false); }}>
-                  Save Changes
+                <Button 
+                  variant="outline" 
+                  className="flex-1" 
+                  onClick={() => setIsEditOpen(false)}
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  variant="gradient" 
+                  className="flex-1" 
+                  onClick={handleUpdateAsset}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? "Saving..." : "Save Changes"}
                 </Button>
               </div>
             </div>
@@ -749,9 +1037,13 @@ export function AssetInventory() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteConfirm} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Delete
+            <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDeleteConfirm} 
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? "Deleting..." : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

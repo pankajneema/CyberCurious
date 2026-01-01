@@ -1,10 +1,11 @@
+# services.py
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 
 router = APIRouter(prefix="/api/v1/services", tags=["Services"])
 
-from auth_utils import get_current_user
+from utils.auth_utils import get_current_user
 
 # Mock services database
 services_db = {}

@@ -8,10 +8,14 @@ CyberSentinel combines Attack Surface Management (ASM), automated vulnerability 
 
 ## Architecture
 
-- **Frontend**: Next.js 14 (App Router) with TypeScript, Tailwind CSS
+- **Frontend**: React + Vite + TypeScript, Tailwind CSS
 - **Backend**: API Service (FastAPI)
   - Single API Service with organized routes
-  - Background workers for heavy processing
+  - **Central Asset Inventory** (`/api/v1/assets`) used by Dashboard, ASM, VS and Team
+  - **ASM routes** (`/api/v1/asm/*`) – discovery and attack surface overview
+  - **VS routes** (legacy `/api/v1/scans`, new `/api/v1/vs/*`) – vulnerability scanning & metrics
+  - **Tasks API** (`/api/v1/tasks`) – remediation queue backing the Team module
+  - Background workers for heavy processing (Python + Go skeletons)
 - **Infrastructure**: Kubernetes, Terraform
 - **Databases**: PostgreSQL, ClickHouse, Redis
 
@@ -72,10 +76,12 @@ CyberCurious/
 
 ### Available (MVP)
 - ✅ Landing page with marketing content
-- ✅ Authentication (signup, login, SSO)
-- ✅ Dashboard with risk scoring
-- ✅ Attack Surface Management (ASM)
-- ✅ Vulnerability Scanning (VS)
+- ✅ Authentication (signup, login)
+- ✅ Dashboard with risk scoring and live metrics
+- ✅ **Central Asset Inventory** (single source of truth for all assets)
+- ✅ **Attack Surface Management (ASM)** – discovery, exposure views, ASM dashboard
+- ✅ **Vulnerability Scanning (VS)** – scan manager, findings, asset‑centric view
+- ✅ **Team & Tasks** – remediation queue and task assignment
 
 ### Coming Soon
 - Breach & Attack Simulation (BAS)

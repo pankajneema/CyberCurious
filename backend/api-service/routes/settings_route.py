@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 
 router = APIRouter(prefix="/api/v1/settings", tags=["Settings"])
 
-from auth_utils import get_current_user
+from utils.auth_utils import get_current_user
 
 @router.get("")
 async def get_settings(current_user: dict = Depends(get_current_user)):

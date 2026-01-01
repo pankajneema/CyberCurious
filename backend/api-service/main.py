@@ -4,7 +4,7 @@ from config.settings import settings
 from utils import init_db, close_db, close_redis, close_queue, close_clickhouse
 
 # Import all routes
-from routes import auth, users, profile, accounts, billing, services, asm, vs, settings_route, activity
+from routes import auth, users, profile, accounts, billing, services, asm, vs, settings_route, activity, assets, tasks
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -33,8 +33,8 @@ async def startup_event():
     try:
         from utils import get_redis, get_clickhouse, get_queue_connection
         get_redis()
-        get_clickhouse()
-        get_queue_connection()
+        # get_clickhouse()
+        # get_queue_connection()
     except Exception as e:
         print(f"Info: Some optional connections not available: {e}")
 
@@ -66,8 +66,11 @@ app.include_router(billing.router)
 app.include_router(services.router)
 app.include_router(asm.router)
 app.include_router(vs.router)
+app.include_router(vs.vs_router)
 app.include_router(settings_route.router)
 app.include_router(activity.router)
+app.include_router(assets.router)
+app.include_router(tasks.router)
 
 if __name__ == "__main__":
     import uvicorn

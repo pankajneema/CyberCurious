@@ -49,26 +49,26 @@ services:
       timeout: 5s
       retries: 5
 
-  api-service:
-    build:
-      context: ./backend/api-service
-      dockerfile: Dockerfile
-    container_name: cybersentinel-api
-    ports:
-      - "8000:8000"
-    environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/cybersentinel
-      REDIS_URL: redis://redis:6379
-      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
-      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    volumes:
-      - ./backend/api-service:/app
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+        #api-service:
+        #  build:
+        #    context: ./backend/api-service
+        #    dockerfile: Dockerfile
+        #  container_name: cybersentinel-api
+        #  ports:
+        #    - "8000:8000"
+        #  environment:
+        #    DATABASE_URL: postgresql://postgres:postgres@postgres:5432/cybersentinel
+        #    REDIS_URL: redis://redis:6379
+        #    SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+        #    JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+        #  depends_on:
+        #    postgres:
+        #      condition: service_healthy
+        #    redis:
+        #      condition: service_healthy
+        #  volumes:
+        #    - ./backend/api-service:/app
+        #  command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 volumes:
   postgres_data:

@@ -8,7 +8,7 @@ import { SubdomainDiscovery } from "@/components/asm/SubdomainDiscovery";
 import { CloudAttackSurface } from "@/components/asm/CloudAttackSurface";
 import { HumanAttackSurface } from "@/components/asm/HumanAttackSurface";
 import { AttackSurfaceGraph } from "@/components/asm/AttackSurfaceGraph";
-import { ScanManager } from "@/components/asm/ScanManager";
+import { ScanManager } from "@/components/asm/DiscoveryManager";
 import { ASMSettings } from "@/components/asm/ASMSettings";
 import { motion } from "framer-motion";
 

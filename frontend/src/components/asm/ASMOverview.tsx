@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { RiskGauge } from "./RiskGauge";
 import { StatCard } from "./StatCard";
 import {
@@ -23,6 +23,7 @@ import {
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { fetchAsmDashboard, AsmDashboard } from "@/lib/api";
 
 const trendData = [
   { month: "Jan", score: 72 },
@@ -41,9 +42,9 @@ const topRisks = [
   { id: 5, title: "Permissive CORS Policy", asset: "cdn.company.com", severity: "medium" as const, score: 45 },
 ];
 
-const quickStats = [
-  { label: "Last Scan", value: "2h ago", icon: Clock, status: "success" },
-  { label: "Assets Monitored", value: "1,247", icon: Layers, status: "neutral" },
+const defaultQuickStats = [
+  { label: "Last Scan", value: "—", icon: Clock, status: "success" },
+  { label: "Assets Monitored", value: "—", icon: Layers, status: "neutral" },
   { label: "Active Threats", value: "23", icon: AlertTriangle, status: "danger" },
   { label: "Coverage", value: "94%", icon: Shield, status: "success" },
 ];
@@ -61,6 +62,10 @@ interface ASMOverviewProps {
 }
 
 export function ASMOverview({ onNavigateToScans, onNavigateToReports }: ASMOverviewProps) {
+  const [asm, setAsm] = useState<AsmDashboard | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
   const getActivityIcon = (type: string) => {
     switch (type) {
       case "alert": return <AlertTriangle className="w-4 h-4 text-destructive" />;
@@ -69,6 +74,48 @@ export function ASMOverview({ onNavigateToScans, onNavigateToReports }: ASMOverv
       default: return <Circle className="w-4 h-4 text-muted-foreground" />;
     }
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await fetchAsmDashboard();
+        if (!cancelled) setAsm(data);
+      } catch (e: any) {
+        if (!cancelled) setError(e.message ?? "Failed to load ASM overview");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const attackSurfaceScore = asm ? asm.attack_surface_score : 62;
+  const criticalCount = asm ? asm.critical_count : 23;
+  const highCount = asm ? asm.high_count : 47;
+  const resolvedCount = asm ? asm.resolved_count : 156;
+
+  const quickStats = [
+    {
+      label: "Last Scan",
+      value: asm?.last_scan ? new Date(asm.last_scan).toLocaleString() : defaultQuickStats[0].value,
+      icon: Clock,
+      status: "success" as const,
+    },
+    {
+      label: "Assets Monitored",
+      value: asm?.total_assets != null ? String(asm.total_assets) : defaultQuickStats[1].value,
+      icon: Layers,
+      status: "neutral" as const,
+    },
+    defaultQuickStats[2],
+    defaultQuickStats[3],
+  ];
 
   return (
     <div className="space-y-6">
@@ -119,7 +166,7 @@ export function ASMOverview({ onNavigateToScans, onNavigateToReports }: ASMOverv
                 transition={{ delay: 0.3 }}
                 className="text-white/70 max-w-lg text-lg"
               >
-                Real-time visibility into your organization's external exposure
+                {loading ? "Loading attack surface overview..." : "Real-time visibility into your organization's external exposure"}
               </motion.p>
 
               {/* Quick Stats Pills */}
@@ -175,21 +222,21 @@ export function ASMOverview({ onNavigateToScans, onNavigateToReports }: ASMOverv
             </div>
             
             <div className="flex justify-center">
-              <RiskGauge score={62} size="lg" />
+              <RiskGauge score={attackSurfaceScore} size="lg" />
             </div>
             
             <div className="mt-6 pt-4 border-t border-border">
               <div className="grid grid-cols-3 gap-4 text-center">
                 <div>
-                  <div className="text-2xl font-bold text-destructive">23</div>
+                  <div className="text-2xl font-bold text-destructive">{criticalCount}</div>
                   <div className="text-xs text-muted-foreground">Critical</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-warning">47</div>
+                  <div className="text-2xl font-bold text-warning">{highCount}</div>
                   <div className="text-xs text-muted-foreground">High</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-success">156</div>
+                  <div className="text-2xl font-bold text-success">{resolvedCount}</div>
                   <div className="text-xs text-muted-foreground">Resolved</div>
                 </div>
               </div>

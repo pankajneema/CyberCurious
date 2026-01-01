@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/asm/StatCard";
 import {
@@ -19,18 +20,19 @@ import {
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
+import { fetchVsDashboard, VsDashboard } from "@/lib/api";
 
 interface VSDashboardProps {
   onNavigateToScans?: () => void;
   onNavigateToFindings?: () => void;
 }
 
-const severityData = {
+const defaultSeverityData = {
   critical: 12,
   high: 34,
   medium: 89,
   low: 156,
-};
+} as const;
 
 const topVulnerableAssets = [
   { asset: "api.company.com", criticalCount: 5, highCount: 8, total: 23 },
@@ -54,7 +56,40 @@ const recentScans = [
 ];
 
 export function VSDashboard({ onNavigateToScans, onNavigateToFindings }: VSDashboardProps) {
-  const totalVulns = Object.values(severityData).reduce((a, b) => a + b, 0);
+  const [vs, setVs] = useState<VsDashboard | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await fetchVsDashboard();
+        if (!cancelled) setVs(data);
+      } catch (e: any) {
+        if (!cancelled) setError(e.message ?? "Failed to load VS dashboard");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const severityData = {
+    critical: vs?.critical ?? defaultSeverityData.critical,
+    high: vs?.high ?? defaultSeverityData.high,
+    medium: vs?.medium ?? defaultSeverityData.medium,
+    low: vs?.low ?? defaultSeverityData.low,
+  };
+
+  const totalVulns = vs
+    ? vs.total_vulnerabilities
+    : Object.values(severityData).reduce((a, b) => a + b, 0);
   
   return (
     <div className="space-y-6">
@@ -74,7 +109,9 @@ export function VSDashboard({ onNavigateToScans, onNavigateToFindings }: VSDashb
               -12%
             </div>
           </div>
-          <div className="text-3xl font-bold text-foreground">{totalVulns}</div>
+          <div className="text-3xl font-bold text-foreground">
+            {loading ? "…" : totalVulns}
+          </div>
           <div className="text-sm text-muted-foreground">Total Vulnerabilities</div>
         </motion.div>
 
@@ -108,7 +145,10 @@ export function VSDashboard({ onNavigateToScans, onNavigateToFindings }: VSDashb
               <Clock className="w-5 h-5 text-accent" />
             </div>
           </div>
-          <div className="text-3xl font-bold text-foreground">4.2<span className="text-lg">d</span></div>
+          <div className="text-3xl font-bold text-foreground">
+            {vs ? vs.avg_mttr_days.toFixed(1) : "4.2"}
+            <span className="text-lg">d</span>
+          </div>
           <div className="text-sm text-muted-foreground">Avg. MTTR</div>
         </motion.div>
 
@@ -123,13 +163,21 @@ export function VSDashboard({ onNavigateToScans, onNavigateToFindings }: VSDashb
               <Shield className="w-5 h-5 text-success" />
             </div>
           </div>
-          <div className="text-3xl font-bold text-foreground">87<span className="text-lg">%</span></div>
+          <div className="text-3xl font-bold text-foreground">
+            {vs ? vs.scan_coverage : 87}
+            <span className="text-lg">%</span>
+          </div>
           <div className="text-sm text-muted-foreground">Scan Coverage</div>
         </motion.div>
       </div>
 
       {/* Main Grid */}
       <div className="grid lg:grid-cols-12 gap-6">
+        {error && (
+          <div className="lg:col-span-12 text-sm text-destructive bg-destructive/10 border border-destructive/30 rounded-xl px-4 py-2">
+            {error}
+          </div>
+        )}
         {/* Severity Breakdown */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}

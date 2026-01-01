@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -49,69 +49,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
-
-const scans = [
-  {
-    id: 1,
-    name: "Production API Scan",
-    targets: ["api.company.com", "api2.company.com"],
-    type: "Full",
-    status: "completed",
-    lastRun: "2024-01-20 14:30",
-    nextRun: null,
-    duration: "45 min",
-    findings: { critical: 2, high: 5, medium: 12, low: 8 },
-    progress: 100,
-  },
-  {
-    id: 2,
-    name: "Weekly External Scan",
-    targets: ["*.company.com"],
-    type: "Authenticated",
-    status: "running",
-    lastRun: "2024-01-20 09:00",
-    nextRun: "2024-01-27 09:00",
-    duration: "23 min",
-    findings: { critical: 0, high: 2, medium: 4, low: 3 },
-    progress: 67,
-  },
-  {
-    id: 3,
-    name: "Staging Environment",
-    targets: ["staging.app.com"],
-    type: "Quick",
-    status: "completed",
-    lastRun: "2024-01-19 16:00",
-    nextRun: null,
-    duration: "12 min",
-    findings: { critical: 0, high: 3, medium: 8, low: 15 },
-    progress: 100,
-  },
-  {
-    id: 4,
-    name: "Database Servers",
-    targets: ["10.0.0.0/24"],
-    type: "Full",
-    status: "scheduled",
-    lastRun: null,
-    nextRun: "2024-01-20 22:00",
-    duration: "—",
-    findings: { critical: 0, high: 0, medium: 0, low: 0 },
-    progress: 0,
-  },
-  {
-    id: 5,
-    name: "CI/CD Pipeline Check",
-    targets: ["jenkins.internal.com"],
-    type: "Authenticated",
-    status: "paused",
-    lastRun: "2024-01-18 10:00",
-    nextRun: null,
-    duration: "18 min",
-    findings: { critical: 1, high: 2, medium: 5, low: 3 },
-    progress: 34,
-  },
-];
+import { fetchScans, createScan, type Scan } from "@/lib/api";
 
 const availableAssets = [
   { id: 1, name: "api.company.com", type: "Domain", lastScan: "2h ago" },
@@ -136,11 +74,36 @@ export function VSScanManager() {
     excludePorts: "",
     excludePaths: "",
   });
+  const [scans, setScans] = useState<Scan[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const filteredScans = scans.filter(scan => {
-    const matchesSearch = scan.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         scan.targets.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()));
-    const matchesStatus = statusFilter === "all" || scan.status === statusFilter;
+  useEffect(() => {
+    const load = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await fetchScans();
+        setScans(data);
+      } catch (e: any) {
+        setError(e.message ?? "Failed to load scans");
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
+
+  const filteredScans = scans.filter((scan: any) => {
+    const matchesSearch =
+      (scan.name || "")
+        .toLowerCase()
+        .includes(searchQuery.toLowerCase()) ||
+      (scan.target || "")
+        .toLowerCase()
+        .includes(searchQuery.toLowerCase());
+    const matchesStatus =
+      statusFilter === "all" || scan.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
@@ -154,14 +117,36 @@ export function VSScanManager() {
     }
   };
 
-  const handleCreateScan = () => {
+  const handleCreateScan = async () => {
     if (selectedAssets.length === 0 || !scanConfig.name) {
       toast({ title: "Error", description: "Please select assets and provide a scan name", variant: "destructive" });
       return;
     }
-    toast({ title: "Scan Created", description: `${scanConfig.name} has been ${scanConfig.schedule === 'now' ? 'started' : 'scheduled'}` });
-    setIsNewScanOpen(false);
-    resetScanWizard();
+    try {
+      // For now, use the first selected asset as target name
+      const firstAsset = availableAssets.find(a => a.id === selectedAssets[0]);
+      const target = firstAsset ? firstAsset.name : "target";
+      await createScan({
+        name: scanConfig.name,
+        target,
+        scan_type: scanConfig.type,
+        frequency: scanConfig.schedule === "now" ? null : scanConfig.schedule,
+      });
+      toast({
+        title: "Scan Created",
+        description: `${scanConfig.name} has been ${scanConfig.schedule === "now" ? "started" : "scheduled"}`,
+      });
+      setIsNewScanOpen(false);
+      resetScanWizard();
+      const data = await fetchScans();
+      setScans(data);
+    } catch (e: any) {
+      toast({
+        title: "Failed to create scan",
+        description: e.message ?? "Unexpected error while creating scan",
+        variant: "destructive",
+      });
+    }
   };
 
   const resetScanWizard = () => {
@@ -192,9 +177,9 @@ export function VSScanManager() {
       <div className="grid sm:grid-cols-4 gap-4">
         {[
           { label: "Total Scans", value: scans.length, icon: FileText, color: "bg-primary/10 text-primary" },
-          { label: "Running", value: scans.filter(s => s.status === "running").length, icon: RefreshCw, color: "bg-secondary/10 text-secondary" },
-          { label: "Scheduled", value: scans.filter(s => s.status === "scheduled").length, icon: Calendar, color: "bg-accent/10 text-accent" },
-          { label: "Completed", value: scans.filter(s => s.status === "completed").length, icon: CheckCircle2, color: "bg-success/10 text-success" },
+          { label: "Running", value: scans.filter((s: any) => s.status === "running").length, icon: RefreshCw, color: "bg-secondary/10 text-secondary" },
+          { label: "Scheduled", value: scans.filter((s: any) => s.status === "scheduled").length, icon: Calendar, color: "bg-accent/10 text-accent" },
+          { label: "Completed", value: scans.filter((s: any) => s.status === "completed").length, icon: CheckCircle2, color: "bg-success/10 text-success" },
         ].map((stat, i) => (
           <motion.div
             key={stat.label}

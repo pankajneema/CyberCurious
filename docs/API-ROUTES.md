@@ -208,6 +208,20 @@ Get asset details
 ### DELETE `/api/v1/asm/assets/{asset_id}`
 Delete asset
 
+### GET `/api/v1/asm/dashboard`
+High-level ASM overview metrics used by the ASM UI.
+
+```json
+{
+  "attack_surface_score": 62,
+  "critical_count": 10,
+  "high_count": 25,
+  "resolved_count": 156,
+  "total_assets": 1247,
+  "last_scan": "2024-01-20T14:30:00Z"
+}
+```
+
 ---
 
 ## 🛡️ Vulnerability Scanning Routes
@@ -235,6 +249,129 @@ Retest a scan
 
 ### DELETE `/api/v1/scans/{scan_id}`
 Delete scan
+
+---
+
+## 📦 Asset Inventory Routes
+
+### GET `/api/v1/assets`
+Central asset inventory used by Assets, ASM, and VS modules.
+
+- Query (optional):
+  - `q`: search by name
+  - `type`: `domain|ip|cloud|repo|saas|user`
+  - `exposure`: `public|internal`
+  - `page`, `page_size`
+
+```json
+{
+  "items": [
+    {
+      "id": "1",
+      "name": "api.company.com",
+      "type": "domain",
+      "exposure": "public",
+      "risk_score": 78,
+      "tags": ["production", "api"],
+      "last_seen": "2024-01-20T14:30:00Z",
+      "status": "active"
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "page_size": 50
+}
+```
+
+### POST `/api/v1/assets`
+Create a new asset in the central inventory.
+
+```json
+{
+  "name": "new.company.com",
+  "type": "domain",
+  "exposure": "public",
+  "tags": ["production"]
+}
+```
+
+### GET `/api/v1/assets/{asset_id}`
+Get asset details.
+
+### PATCH `/api/v1/assets/{asset_id}`
+Update asset fields (name, exposure, tags, risk_score, status).
+
+### DELETE `/api/v1/assets/{asset_id}`
+Delete asset from inventory.
+
+---
+
+## ✅ Task & Remediation Routes
+
+### GET `/api/v1/tasks`
+List remediation/operational tasks used by the Team module.
+
+- Query (optional):
+  - `q`: search by title or assignee
+  - `status`: `pending|in_progress|completed|overdue`
+  - `priority`: `critical|high|medium|low`
+  - `page`, `page_size`
+
+### POST `/api/v1/tasks`
+Create a new task (e.g. from Team page or from a VS finding).
+
+```json
+{
+  "title": "Patch CVE-2024-1234 on web server",
+  "description": "Critical vulnerability requires immediate attention",
+  "priority": "critical",
+  "assignee_id": "user-id",
+  "assignee_name": "John Smith",
+  "due_date": "2024-01-22T18:00:00Z",
+  "asset_name": "api.company.com"
+}
+```
+
+### GET `/api/v1/tasks/{task_id}`
+Get full task details including messages.
+
+### PATCH `/api/v1/tasks/{task_id}`
+Update task fields (status, assignee, title, etc.).
+
+### DELETE `/api/v1/tasks/{task_id}`
+Delete a task.
+
+### GET `/api/v1/tasks/{task_id}/messages`
+List messages associated with a task.
+
+### POST `/api/v1/tasks/{task_id}/messages`
+Append a new message (internal, Slack, Jira, or email) to a task.
+
+```json
+{
+  "message": "Working on the fix now",
+  "platform": "slack"
+}
+```
+
+---
+
+## 🐞 VS Module (Dashboard) Routes
+
+### GET `/api/v1/vs/dashboard`
+Aggregated vulnerability scanning metrics used by the VS dashboard UI.
+
+```json
+{
+  "total_vulnerabilities": 191,
+  "critical": 12,
+  "high": 34,
+  "medium": 89,
+  "low": 56,
+  "avg_mttr_days": 4.2,
+  "scan_coverage": 87
+}
+```
 
 ---
 

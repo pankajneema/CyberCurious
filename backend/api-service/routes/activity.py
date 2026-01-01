@@ -3,7 +3,7 @@ from datetime import datetime
 
 router = APIRouter(prefix="/api/v1", tags=["Activity"])
 
-from auth_utils import get_current_user
+from utils.auth_utils import get_current_user
 
 @router.get("/activity")
 async def get_activity(skip: int = 0, limit: int = 50, current_user: dict = Depends(get_current_user)):

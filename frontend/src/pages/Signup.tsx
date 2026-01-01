@@ -1,31 +1,109 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Shield, Mail, Lock, User, Building, ArrowRight, Eye, EyeOff, Check, X } from "lucide-react";
+import { Shield, Mail, Lock, User, Building, ArrowRight, Eye, EyeOff, Check, X, AlertCircle } from "lucide-react";
 import { motion } from "framer-motion";
+import { signup, type SignupPayload } from "@/lib/api";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export default function Signup() {
+  const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  
+  // Form state
+  const [formData, setFormData] = useState({
+    firstName: "",
+    lastName: "",
+    company: "",
+    email: "",
+    password: "",
+    country: "US", // Default country
+    termsAccepted: false,
+  });
 
   const passwordRequirements = [
-    { label: "At least 8 characters", met: password.length >= 8 },
-    { label: "One uppercase letter", met: /[A-Z]/.test(password) },
-    { label: "One lowercase letter", met: /[a-z]/.test(password) },
-    { label: "One number", met: /\d/.test(password) },
+    { label: "At least 8 characters", met: formData.password.length >= 8 },
+    { label: "One uppercase letter", met: /[A-Z]/.test(formData.password) },
+    { label: "One lowercase letter", met: /[a-z]/.test(formData.password) },
+    { label: "One number", met: /\d/.test(formData.password) },
   ];
+
+  const isPasswordValid = passwordRequirements.every(req => req.met);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { id, value } = e.target;
+    setFormData(prev => ({ ...prev, [id]: value }));
+    // Clear error when user starts typing
+    if (error) setError(null);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
+
+    // Validate password requirements
+    if (!isPasswordValid) {
+      setError("Please meet all password requirements");
+      return;
+    }
+
+    // Validate terms
+    if (!formData.termsAccepted) {
+      setError("Please accept the Terms of Service and Privacy Policy");
+      return;
+    }
+
     setIsLoading(true);
-    setTimeout(() => {
+
+    try {
+      // Prepare signup payload
+      const payload: SignupPayload = {
+        company_name: formData.company,
+        full_name: `${formData.firstName} ${formData.lastName}`.trim(),
+        email: formData.email,
+        password: formData.password,
+        role: "admin", // Default role for signup
+        country: formData.country,
+      };
+
+      // Call signup API
+      const response = await signup(payload);
+
+      // Success! Navigate to dashboard
+      console.log("Signup successful:", response);
+      navigate("/app/dashboard");
+    } catch (err) {
+      // Handle errors
+      console.error("Signup error:", err);
+      
+      if (err instanceof Error) {
+        // Try to parse error message
+        try {
+          const errorData = JSON.parse(err.message);
+          setError(errorData.detail || errorData.message || "Signup failed. Please try again.");
+        } catch {
+          // If it's just a regular error message
+          if (err.message.includes("409") || err.message.includes("conflict")) {
+            setError("An account with this email already exists. Please sign in instead.");
+          } else if (err.message.includes("400") || err.message.includes("bad request")) {
+            setError("Invalid input. Please check your information and try again.");
+          } else if (err.message.includes("500")) {
+            setError("Server error. Please try again later.");
+          } else {
+            setError(err.message || "Signup failed. Please try again.");
+          }
+        }
+      } else {
+        setError("An unexpected error occurred. Please try again.");
+      }
+    } finally {
       setIsLoading(false);
-      window.location.href = "/app/dashboard";
-    }, 1500);
+    }
   };
 
   return (
@@ -90,9 +168,17 @@ export default function Signup() {
             Get started with your 14-day free trial
           </p>
 
+          {/* Error Alert */}
+          {error && (
+            <Alert variant="destructive" className="mb-6">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
           {/* SSO Buttons */}
           <div className="grid grid-cols-2 gap-3 mb-6">
-            <Button variant="outline" className="w-full">
+            <Button variant="outline" className="w-full" type="button">
               <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
                 <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
                 <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
@@ -101,7 +187,7 @@ export default function Signup() {
               </svg>
               Google
             </Button>
-            <Button variant="outline" className="w-full">
+            <Button variant="outline" className="w-full" type="button">
               <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
               </svg>
@@ -129,7 +215,10 @@ export default function Signup() {
                     id="firstName"
                     placeholder="John"
                     className="pl-10"
+                    value={formData.firstName}
+                    onChange={handleInputChange}
                     required
+                    disabled={isLoading}
                   />
                 </div>
               </div>
@@ -138,7 +227,10 @@ export default function Signup() {
                 <Input
                   id="lastName"
                   placeholder="Doe"
+                  value={formData.lastName}
+                  onChange={handleInputChange}
                   required
+                  disabled={isLoading}
                 />
               </div>
             </div>
@@ -151,7 +243,10 @@ export default function Signup() {
                   id="company"
                   placeholder="Acme Inc."
                   className="pl-10"
+                  value={formData.company}
+                  onChange={handleInputChange}
                   required
+                  disabled={isLoading}
                 />
               </div>
             </div>
@@ -165,7 +260,10 @@ export default function Signup() {
                   type="email"
                   placeholder="john@company.com"
                   className="pl-10"
+                  value={formData.email}
+                  onChange={handleInputChange}
                   required
+                  disabled={isLoading}
                 />
               </div>
             </div>
@@ -179,21 +277,23 @@ export default function Signup() {
                   type={showPassword ? "text" : "password"}
                   placeholder="Create a password"
                   className="pl-10 pr-10"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  value={formData.password}
+                  onChange={handleInputChange}
                   required
+                  disabled={isLoading}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  disabled={isLoading}
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
               
               {/* Password Requirements */}
-              {password && (
+              {formData.password && (
                 <div className="grid grid-cols-2 gap-2 mt-2">
                   {passwordRequirements.map((req) => (
                     <div key={req.label} className="flex items-center gap-1.5 text-xs">
@@ -212,8 +312,17 @@ export default function Signup() {
             </div>
 
             <div className="flex items-start gap-2">
-              <Checkbox id="terms" required />
-              <Label htmlFor="terms" className="text-sm text-muted-foreground leading-relaxed">
+              <Checkbox 
+                id="terms" 
+                checked={formData.termsAccepted}
+                onCheckedChange={(checked) => {
+                  setFormData(prev => ({ ...prev, termsAccepted: checked === true }));
+                  if (error) setError(null);
+                }}
+                required 
+                disabled={isLoading}
+              />
+              <Label htmlFor="terms" className="text-sm text-muted-foreground leading-relaxed cursor-pointer">
                 I agree to the{" "}
                 <Link to="/legal/terms" className="text-primary hover:underline">
                   Terms of Service
@@ -225,7 +334,12 @@ export default function Signup() {
               </Label>
             </div>
 
-            <Button type="submit" variant="gradient" className="w-full" disabled={isLoading}>
+            <Button 
+              type="submit" 
+              variant="gradient" 
+              className="w-full" 
+              disabled={isLoading || !isPasswordValid || !formData.termsAccepted}
+            >
               {isLoading ? "Creating account..." : "Start free trial"}
               <ArrowRight className="w-4 h-4" />
             </Button>

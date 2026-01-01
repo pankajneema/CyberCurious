@@ -1,22 +1,55 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Shield, Mail, Lock, ArrowRight, Eye, EyeOff, CheckCircle2, Zap, Users } from "lucide-react";
+import { Shield, Mail, Lock, ArrowRight, Eye, EyeOff, CheckCircle2, Zap, Users, AlertCircle } from "lucide-react";
 import { motion } from "framer-motion";
+import { login } from "@/lib/api";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    setTimeout(() => {
+    setError("");
+
+    try {
+      const response = await login({ email, password });
+      
+      // Store the access token
+      localStorage.setItem("access_token", response.access_token);
+      localStorage.setItem("token_type", response.token_type);
+      
+      // Store user email for reference
+      localStorage.setItem("user_email", email);
+
+      // Redirect to dashboard
+      navigate("/app/dashboard");
+    } catch (error) {
+      let errorMessage = "Failed to sign in. Please try again.";
+      
+      if (error instanceof Error) {
+        // Parse error message if it's JSON
+        try {
+          const errorData = JSON.parse(error.message);
+          errorMessage = errorData.detail || errorData.message || errorMessage;
+        } catch {
+          errorMessage = error.message || errorMessage;
+        }
+      }
+
+      setError(errorMessage);
+    } finally {
       setIsLoading(false);
-      window.location.href = "/app/dashboard";
-    }, 1500);
+    }
   };
 
   return (
@@ -44,6 +77,14 @@ export default function Login() {
           <p className="text-muted-foreground mb-8">
             Sign in to your account to continue
           </p>
+
+          {/* Error Alert */}
+          {error && (
+            <Alert variant="destructive" className="mb-6">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
 
           {/* SSO Buttons */}
           <div className="grid grid-cols-2 gap-3 mb-6">
@@ -84,6 +125,8 @@ export default function Login() {
                   type="email"
                   placeholder="name@company.com"
                   className="h-12 pl-12 text-base input-enhanced"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   required
                 />
               </div>
@@ -103,6 +146,8 @@ export default function Login() {
                   type={showPassword ? "text" : "password"}
                   placeholder="Enter your password"
                   className="h-12 pl-12 pr-12 text-base input-enhanced"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   required
                 />
                 <button

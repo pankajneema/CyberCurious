@@ -7,7 +7,7 @@ import uuid
 router = APIRouter(prefix="/api/v1/billing", tags=["Billing"])
 
 from database import companies_db
-from auth_utils import get_current_user
+from utils.auth_utils import get_current_user
 
 # Mock invoices database
 invoices_db = {}

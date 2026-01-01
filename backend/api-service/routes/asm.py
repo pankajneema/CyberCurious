@@ -1,77 +1,184 @@
+# api/asm.py
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from typing import List, Optional
-from datetime import datetime
-import uuid
+from typing import List, Optional, Literal
+from sqlalchemy.orm import Session
+
+from utils.database import get_db
+from utils.auth_utils import get_current_user
+from models.asm_models import (
+    AsmDiscovery as AsmDiscoveryModel,
+    AsmDiscoveryRun as AsmDiscoveryRunModel,
+)
 
 router = APIRouter(prefix="/api/v1/asm", tags=["ASM"])
 
-from auth_utils import get_current_user
 
-# Mock databases
-jobs_db = {}
-assets_db = {}
+# -------------------- Schemas --------------------
 
-class DiscoveryRequest(BaseModel):
-    target: str
-    scan_type: str = "external"
+class AsmDiscoveryCreateRequest(BaseModel):
+    name: str
+    asset_type: Literal["domain", "cloud", "saas"]
+    target_source: Literal["FROM_ASSET", "MANUAL_ENTRY"]
+    asset_ids: Optional[List[str]] = None
+    manual_targets: Optional[List[str]] = None
 
-class Asset(BaseModel):
+    intensity: Literal["LIGHT", "NORMAL", "DEEP"] = "NORMAL"
+
+    schedule_type: Literal["QUICK", "INTERVAL", "CRON"] = "QUICK"
+    schedule_value: Optional[str] = None
+
+
+class AsmDiscoveryUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    intensity: Optional[Literal["LIGHT", "NORMAL", "DEEP"]] = None
+    schedule_type: Optional[Literal["QUICK", "INTERVAL", "CRON"]] = None
+    schedule_value: Optional[str] = None
+    status: Optional[Literal["ACTIVE", "PAUSED"]] = None
+
+
+class AsmDiscoveryResponse(BaseModel):
     id: str
-    type: str
-    identifier: str
-    first_seen: str
-    last_seen: str
-    risk_score: int
-    tags: List[str]
+    name: str
+    asset_type: str
+    intensity: str
 
-@router.post("/discover")
-async def start_discovery(request: DiscoveryRequest, current_user: dict = Depends(get_current_user)):
-    job_id = str(uuid.uuid4())
-    jobs_db[job_id] = {
-        "id": job_id,
-        "target": request.target,
-        "scan_type": request.scan_type,
-        "status": "running",
-        "progress": 0,
-        "created_at": datetime.utcnow().isoformat()
-    }
-    # TODO: Queue job for background worker
-    return {"job_id": job_id, "status": "running"}
+    schedule_type: str
+    schedule_value: Optional[str]
 
-@router.get("/jobs/{job_id}")
-async def get_job_status(job_id: str, current_user: dict = Depends(get_current_user)):
-    job = jobs_db.get(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    return job
+    status: str
+    last_run_at: Optional[str]
+    next_run_at: Optional[str]
 
-@router.get("/assets", response_model=List[Asset])
-async def list_assets(skip: int = 0, limit: int = 100, current_user: dict = Depends(get_current_user)):
-    if not assets_db:
-        assets_db["1"] = {
-            "id": "1",
-            "type": "domain",
-            "identifier": "api.example.com",
-            "first_seen": "2024-01-01T00:00:00",
-            "last_seen": "2024-01-14T00:00:00",
-            "risk_score": 95,
-            "tags": ["production", "api"]
-        }
-    assets = list(assets_db.values())[skip:skip+limit]
-    return [Asset(**a) for a in assets]
+    created_at: Optional[str]
+    updated_at: Optional[str]
 
-@router.get("/assets/{asset_id}", response_model=Asset)
-async def get_asset(asset_id: str, current_user: dict = Depends(get_current_user)):
-    asset = assets_db.get(asset_id)
-    if not asset:
-        raise HTTPException(status_code=404, detail="Asset not found")
-    return Asset(**asset)
 
-@router.delete("/assets/{asset_id}")
-async def delete_asset(asset_id: str, current_user: dict = Depends(get_current_user)):
-    if asset_id not in assets_db:
-        raise HTTPException(status_code=404, detail="Asset not found")
-    del assets_db[asset_id]
-    return {"message": "Asset deleted successfully"}
+class AsmDiscoveryListResponse(BaseModel):
+    items: List[AsmDiscoveryResponse]
+    total: int
+    page: int
+    page_size: int
 
+
+class AsmDashboardResponse(BaseModel):
+    attack_surface_score: int
+    total_discoveries: int
+    active_discoveries: int
+    last_discovery_run: Optional[str]
+
+
+# -------------------- Routes --------------------
+
+@router.post("/discoveries", response_model=AsmDiscoveryResponse)
+def create_discovery(
+    payload: AsmDiscoveryCreateRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+
+    discovery = AsmDiscoveryModel(
+        user_id=current_user["user_id"],
+        name=payload.name,
+        asset_type=payload.asset_type,
+        target_source=payload.target_source,
+        asset_ids=payload.asset_ids,
+        manual_targets=payload.manual_targets,
+        intensity=payload.intensity,
+        schedule_type=payload.schedule_type,
+        schedule_value=payload.schedule_value,
+        status="PENDING",
+    )
+
+    db.add(discovery)
+    db.commit()
+    db.refresh(discovery)
+
+    return discovery.to_dict()
+
+
+@router.get("/discoveries", response_model=AsmDiscoveryListResponse)
+def list_discoveries(
+    page: int = 1,
+    page_size: int = 20,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    query = db.query(AsmDiscoveryModel).filter(
+        AsmDiscoveryModel.user_id == current_user["user_id"]
+    )
+
+    total = query.count()
+
+    discoveries = (
+        query
+        .order_by(AsmDiscoveryModel.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+
+    return AsmDiscoveryListResponse(
+        items=[d.to_dict() for d in discoveries],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.patch("/discoveries/{discovery_id}", response_model=AsmDiscoveryResponse)
+def update_discovery(
+    discovery_id: str,
+    payload: AsmDiscoveryUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    discovery = (
+        db.query(AsmDiscoveryModel)
+        .filter(
+            AsmDiscoveryModel.id == discovery_id,
+            AsmDiscoveryModel.user_id == current_user["user_id"],
+        )
+        .first()
+    )
+
+    if not discovery:
+        raise HTTPException(status_code=404, detail="Discovery not found")
+
+    for key, value in payload.dict(exclude_unset=True).items():
+        setattr(discovery, key, value)
+
+    db.commit()
+    db.refresh(discovery)
+
+    return discovery.to_dict()
+
+
+@router.get("/dashboard", response_model=AsmDashboardResponse)
+def asm_dashboard(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    total = db.query(AsmDiscoveryModel).filter(
+        AsmDiscoveryModel.user_id == current_user["user_id"]
+    ).count()
+
+    active = db.query(AsmDiscoveryModel).filter(
+        AsmDiscoveryModel.user_id == current_user["user_id"],
+        AsmDiscoveryModel.status == "ACTIVE",
+    ).count()
+
+    last_run = (
+        db.query(AsmDiscoveryRunModel)
+        .filter(AsmDiscoveryRunModel.user_id == current_user["user_id"])
+        .order_by(AsmDiscoveryRunModel.started_at.desc())
+        .first()
+    )
+
+    return AsmDashboardResponse(
+        attack_surface_score=75,
+        total_discoveries=total,
+        active_discoveries=active,
+        last_discovery_run=last_run.started_at if last_run else None,
+    )
