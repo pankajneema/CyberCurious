@@ -10,3 +10,9 @@ redis==5.0.1
 pika==1.3.2
 clickhouse-driver==0.2.6
 PyJWT==2.10.1
+httpx
+aio_pika
+dotenv
+asyncpg
+redis
+clickhouse_connect

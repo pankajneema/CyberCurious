@@ -19,9 +19,6 @@ class Company(Base):
     plan = Column(String, default="starter")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
-    # Relationships
-    users = relationship("User", back_populates="company")
 
 class User(Base):
     __tablename__ = "users"
@@ -31,13 +28,11 @@ class User(Base):
     name = Column(String, nullable=False)
     hashed_password = Column(String, nullable=False)
     role = Column(String, nullable=False)
-    company_id = Column(String, ForeignKey("companies.id"), nullable=False)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
-    company = relationship("Company", back_populates="users")
     profile = relationship("Profile", back_populates="user", uselist=False)
 
 class Profile(Base):

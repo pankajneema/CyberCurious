@@ -1,68 +1,34 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from typing import List, Optional, Literal
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func, and_, not_
 
 from utils.database import get_db
 from utils.auth_utils import get_current_user
 from models.asset_models import Asset as AssetModel
 
-router = APIRouter(prefix="/api/v1/assets", tags=["Assets"])
-
 
 # -------------------- Schemas --------------------
-
-class AssetResponse(BaseModel):
-    id: str
-    name: str
-    type: str
-    exposure: str
-    risk_score: int
-    tags: List[str]
-    status: str
-    last_seen: Optional[str]
-    description: Optional[str]
-    created_at: Optional[str]
-    updated_at: Optional[str]
-
-
-class AssetListResponse(BaseModel):
-    items: List[AssetResponse]
-    total: int
-    page: int
-    page_size: int
-
-
-class AssetCreateRequest(BaseModel):
-    name: str
-    type: Literal["domain", "ip", "cloud", "repo", "saas", "user"]
-    exposure: Literal["public", "internal"] = "internal"
-    tags: Optional[List[str]] = None
-    description: Optional[str] = None
-
-
-class AssetUpdateRequest(BaseModel):
-    name: Optional[str] = None
-    exposure: Optional[Literal["public", "internal"]] = None
-    tags: Optional[List[str]] = None
-    status: Optional[str] = None
-    risk_score: Optional[int] = None
-    description: Optional[str] = None
-
+from schemas.asset_schema import AssetCreateRequest, AssetUpdateRequest, AssetResponse, AssetListResponse
 
 # -------------------- Routes --------------------
+router = APIRouter(prefix="/api/v1/assets", tags=["Assets"])
 
+# ---------------------------------------------------
+# List Assets
+# ---------------------------------------------------
 @router.get("", response_model=AssetListResponse)
-def list_assets(
+async def list_assets(
     q: Optional[str] = Query(None),
     type: Optional[str] = Query(None),
     exposure: Optional[str] = Query(None),
     page: int = 1,
     page_size: int = 50,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    query = db.query(AssetModel).filter(
+    query = select(AssetModel).filter(
         AssetModel.user_id == current_user["user_id"]
     )
 
@@ -75,15 +41,21 @@ def list_assets(
     if exposure:
         query = query.filter(AssetModel.exposure == exposure)
 
-    total = query.count()
+    # Get total count
+    count_query = select(func.count()).select_from(query.subquery())
+    total_result = await db.execute(count_query)
+    total = total_result.scalar()
 
-    assets = (
+    # Get paginated results
+    query = (
         query
         .order_by(AssetModel.created_at.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
-        .all()
     )
+    
+    result = await db.execute(query)
+    assets = result.scalars().all()
 
     return AssetListResponse(
         items=[asset.to_dict() for asset in assets],
@@ -93,10 +65,13 @@ def list_assets(
     )
 
 
+# ---------------------------------------------------
+# Create Asset
+# ---------------------------------------------------
 @router.post("", response_model=AssetResponse)
-def create_asset(
+async def create_asset(
     payload: AssetCreateRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
     asset = AssetModel(
@@ -111,26 +86,28 @@ def create_asset(
     )
 
     db.add(asset)
-    db.commit()
-    db.refresh(asset)
+    await db.commit()
+    await db.refresh(asset)
 
     return asset.to_dict()
 
 
+# ---------------------------------------------------
+# Get Asset
+# ---------------------------------------------------
 @router.get("/{asset_id}", response_model=AssetResponse)
-def get_asset(
+async def get_asset(
     asset_id: str,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    asset = (
-        db.query(AssetModel)
-        .filter(
-            AssetModel.id == asset_id,
-            AssetModel.user_id == current_user["user_id"],
-        )
-        .first()
+    query = select(AssetModel).filter(
+        AssetModel.id == asset_id,
+        AssetModel.user_id == current_user["user_id"],
     )
+    
+    result = await db.execute(query)
+    asset = result.scalar_one_or_none()
 
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
@@ -138,21 +115,23 @@ def get_asset(
     return asset.to_dict()
 
 
+# ---------------------------------------------------
+# Update Asset
+# ---------------------------------------------------
 @router.patch("/{asset_id}", response_model=AssetResponse)
-def update_asset(
+async def update_asset(
     asset_id: str,
     payload: AssetUpdateRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    asset = (
-        db.query(AssetModel)
-        .filter(
-            AssetModel.id == asset_id,
-            AssetModel.user_id == current_user["user_id"],
-        )
-        .first()
+    query = select(AssetModel).filter(
+        AssetModel.id == asset_id,
+        AssetModel.user_id == current_user["user_id"],
     )
+    
+    result = await db.execute(query)
+    asset = result.scalar_one_or_none()
 
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
@@ -160,31 +139,34 @@ def update_asset(
     for key, value in payload.dict(exclude_unset=True).items():
         setattr(asset, key, value)
 
-    db.commit()
-    db.refresh(asset)
+    await db.commit()
+    await db.refresh(asset)
 
     return asset.to_dict()
 
 
+# ---------------------------------------------------
+# Delete Asset
+# ---------------------------------------------------
 @router.delete("/{asset_id}")
-def delete_asset(
+async def delete_asset(
     asset_id: str,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    asset = (
-        db.query(AssetModel)
-        .filter(
-            AssetModel.id == asset_id,
-            AssetModel.user_id == current_user["user_id"],
-        )
-        .first()
+    query = select(AssetModel).filter(
+        AssetModel.id == asset_id,
+        AssetModel.user_id == current_user["user_id"],
     )
+    
+    result = await db.execute(query)
+    asset = result.scalar_one_or_none()
 
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
-
-    db.delete(asset)
-    db.commit()
+    
+    #TODO check for the asset in uising in any discovey 
+    await db.delete(asset)
+    await db.commit()
 
     return {"message": "Asset deleted successfully"}

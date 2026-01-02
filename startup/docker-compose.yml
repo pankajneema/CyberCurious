@@ -49,29 +49,26 @@ services:
       timeout: 5s
       retries: 5
 
-        #api-service:
-        #  build:
-        #    context: ./backend/api-service
-        #    dockerfile: Dockerfile
-        #  container_name: cybersentinel-api
-        #  ports:
-        #    - "8000:8000"
-        #  environment:
-        #    DATABASE_URL: postgresql://postgres:postgres@postgres:5432/cybersentinel
-        #    REDIS_URL: redis://redis:6379
-        #    SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
-        #    JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
-        #  depends_on:
-        #    postgres:
-        #      condition: service_healthy
-        #    redis:
-        #      condition: service_healthy
-        #  volumes:
-        #    - ./backend/api-service:/app
-        #  command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: cybersentinel-rabbitmq
+    ports:
+      - "5672:5672"    # AMQP
+      - "15672:15672"  # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 
 volumes:
   postgres_data:
   redis_data:
   clickhouse_data:
-
+  rabbitmq_data:
