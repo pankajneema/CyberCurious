@@ -1,5 +1,4 @@
 # models/asm_models.py
-
 import uuid
 from sqlalchemy import Column, String, DateTime, Enum, JSON
 from sqlalchemy.sql import func
